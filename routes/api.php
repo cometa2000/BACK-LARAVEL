@@ -23,7 +23,7 @@ Route::group([
  
     //'middleware' => 'auth:api',
     'prefix' => 'auth',
-    // 'middleware' => ['auth:api'],
+    // 'middleware' => ['auth:api','permission:publish articles|edit articles'],
  
 ], function ($router) {
     Route::post('/register', [AuthController::class, 'register'])->name('register');

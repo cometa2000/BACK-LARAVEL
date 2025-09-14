@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserAccessController;
 use App\Http\Controllers\RolePermissionController;
+use App\Http\Controllers\Configuration\SucusaleController;
 
 /*
 |--------------------------------------------------------------------------
@@ -41,4 +42,6 @@ Route::group([
     Route::post('/users/{id}', [UserAccessController::class, 'update']);
     Route::get("users/config", [UserAccessController::class, 'config']);
     Route::resource("users",UserAccessController::class); 
+
+     Route::resource("sucursales",SucusaleController::class); 
 });

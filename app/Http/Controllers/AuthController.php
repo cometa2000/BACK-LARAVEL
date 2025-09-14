@@ -104,14 +104,19 @@ class AuthController extends Controller
      */
     protected function respondWithToken($token)
     {
+        $permissions = auth("api")->user()->getAllPermissions()->map(function($perm) {
+            return $perm->name;
+        });
         return response()->json([
             'access_token' => $token,
             'token_type' => 'bearer',
             'expires_in' => auth('api')->factory()->getTTL() * 60,
-            'user'=> [
-                'full_name' => auth("api")->user()->name.''.auth("api")->user()->surname,
-                'email' => auth("api")->user()->email,
-                // 'password'
+            'user' => [
+                "full_name" => auth("api")->user()->name.' '.auth("api")->user()->surname,
+                "email" => auth("api")->user()->email,
+                "avatar" => auth('api')->user()->avatar ? env("APP_URL")."storage/".auth('api')->user()->avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                "role_name" => auth("api")->user()->role->name,
+                "permissions" => $permissions,
             ]
         ]);
     }

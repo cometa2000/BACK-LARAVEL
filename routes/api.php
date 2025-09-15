@@ -6,6 +6,10 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserAccessController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\Configuration\SucusaleController;
+use App\Http\Controllers\Configuration\WarehouseController;
+use App\Http\Controllers\Configuration\ClientSegmentController;
+use App\Http\Controllers\Configuration\MethodPaymentController;
+use App\Http\Controllers\Configuration\SucursaleDeliverieController;
 
 /*
 |--------------------------------------------------------------------------
@@ -44,4 +48,9 @@ Route::group([
     Route::resource("users",UserAccessController::class); 
 
      Route::resource("sucursales",SucusaleController::class); 
+    Route::resource("warehouses",WarehouseController::class); 
+    Route::resource("sucursale_deliveries",SucursaleDeliverieController::class); 
+    Route::resource("method_payments",MethodPaymentController::class); 
+    Route::resource("client_segments",ClientSegmentController::class); 
+
 });

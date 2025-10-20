@@ -10,7 +10,7 @@ use Carbon\Carbon;
 
 class Sucursale extends Model
 {
-     use HasFactory;
+    use HasFactory;
     use SoftDeletes;
     protected $fillable = [
         "name",

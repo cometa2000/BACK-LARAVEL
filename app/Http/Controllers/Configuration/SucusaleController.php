@@ -16,7 +16,7 @@ class SucusaleController extends Controller
     {
         $search = $request->get("search");
 
-        $sucursales = Sucursale::where("name","like","%".$search."%")->orderBy("id","desc")->paginate(25);
+        $sucursales = Sucursale::where("name","like","%".$search."%")->orderBy("id","desc")->paginate(15);
 
         return response()->json([
             "total" => $sucursales->total(),

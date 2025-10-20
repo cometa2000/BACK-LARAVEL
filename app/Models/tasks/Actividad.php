@@ -1,37 +1,46 @@
 <?php
 
-namespace App\Models\configuration;
+namespace App\Models\tasks;
 
 use Carbon\Carbon;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class MethodPayment extends Model
+class Actividad extends Model
 {
-    use HasFactory;
-    use SoftDeletes;
+    use HasFactory, SoftDeletes;
+    
+    protected $table = 'actividades';
+    
     protected $fillable = [
-        "name",
-        "method_payment_id",
-        "state",
+        'type',
+        'description',
+        'changes',
+        'tarea_id',
+        'user_id',
+    ];
+
+    protected $casts = [
+        'changes' => 'array',
     ];
 
     public function setCreatedAtAttribute($value) {
         date_default_timezone_set("America/Mexico_City");
         $this->attributes["created_at"] = Carbon::now();
     }
+    
     public function setUpdatedAtAttribute($value) {
         date_default_timezone_set("America/Mexico_City");
         $this->attributes["updated_at"] = Carbon::now();
     }
 
-    // PADRE
-    public function method_payment(){
-        return $this->belongsTo(MethodPayment::class,"method_payment_id");
+    public function tarea() {
+        return $this->belongsTo(Tareas::class);
     }
-    // hijos
-    public function method_payments(){
-        return $this->hasMany(MethodPayment::class,"method_payment_id");
+
+    public function user() {
+        return $this->belongsTo(User::class);
     }
 }

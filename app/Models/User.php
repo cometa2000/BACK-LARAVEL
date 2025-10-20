@@ -1,11 +1,12 @@
 <?php
-
+// mi modelo de usuarios
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Traits\HasRoles;
+use App\Models\Configuration\Sucursale;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -61,6 +62,9 @@ class User extends Authenticatable implements JWTSubject
     public function role(){
         return $this->belongsTo(Role::class);
     }
+     public function sucursale(){
+        return $this->belongsTo(Sucursale::class);
+    }
 
     /**
      * Get the identifier that will be stored in the subject claim of the JWT.
@@ -81,4 +85,6 @@ class User extends Authenticatable implements JWTSubject
     {
         return [];
     }
+    
+    
 }

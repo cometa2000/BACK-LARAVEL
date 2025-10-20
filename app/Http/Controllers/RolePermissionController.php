@@ -12,10 +12,11 @@ class RolePermissionController extends Controller
      */
     public function index(Request $request)
     {
+        // $this->authorize("viewAny",Role::class);
         $search = $request->get("search");
 
         $roles = Role::with(["permissions"])->where("name","like","%".$search."%")->orderBy("id","desc")->paginate(25);
-    
+
         return response()->json([
             "total" => $roles->total(),
             "roles" => $roles->map(function($rol) {
@@ -31,7 +32,7 @@ class RolePermissionController extends Controller
      */
     public function store(Request $request)
     {
-        
+
         $IS_ROLE = Role::where("name",$request->name)->first();
         if($IS_ROLE){
             return response()->json([

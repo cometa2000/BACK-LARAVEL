@@ -4,7 +4,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserAccessController;
+use App\Http\Controllers\tasks\GruposController;
+use App\Http\Controllers\tasks\ListasController;
+use App\Http\Controllers\tasks\TareasController;
 use App\Http\Controllers\RolePermissionController;
+use App\Http\Controllers\tasks\ComentariosController;
+use App\Http\Controllers\documents\DocumentosController;
 use App\Http\Controllers\Configuration\SucusaleController;
 use App\Http\Controllers\Configuration\WarehouseController;
 use App\Http\Controllers\Configuration\ClientSegmentController;
@@ -43,14 +48,45 @@ Route::group([
     'middleware' => 'auth:api',
 ], function ($router) {
     Route::resource("roles",RolePermissionController::class); 
+
+    Route::get('/users/search', [GruposController::class, 'searchUsers']);      
+
     Route::post('/users/{id}', [UserAccessController::class, 'update']);
     Route::get("users/config", [UserAccessController::class, 'config']);
     Route::resource("users",UserAccessController::class); 
 
-     Route::resource("sucursales",SucusaleController::class); 
+    // Route::resource('task');
+
+    Route::resource("sucursales",SucusaleController::class); 
     Route::resource("warehouses",WarehouseController::class); 
     Route::resource("sucursale_deliveries",SucursaleDeliverieController::class); 
     Route::resource("method_payments",MethodPaymentController::class); 
     Route::resource("client_segments",ClientSegmentController::class); 
+
+    // Route::post('/tareas/{id}', [TareasController::class, 'update']);
+    Route::get("tareas/config",[TareasController::class, 'config']);
+    Route::post('/tareas/{id}/move', [TareasController::class, 'move']);
+    Route::resource("tareas",TareasController::class);
+
+    Route::get('/tareas/{tareaId}/timeline', [ComentariosController::class, 'index']);
+    Route::post('/tareas/{tareaId}/comentarios', [ComentariosController::class, 'store']);
+    Route::put('/tareas/{tareaId}/comentarios/{comentarioId}', [ComentariosController::class, 'update']);
+    Route::delete('/tareas/{tareaId}/comentarios/{comentarioId}', [ComentariosController::class, 'destroy']);
+
+    Route::post('/grupos/{id}/toggle-star', [GruposController::class, 'toggleStar']);
+    Route::post('/grupos/{id}/share', [GruposController::class, 'share']);
+    Route::delete('/grupos/{grupoId}/unshare/{userId}', [GruposController::class, 'unshare']);
+    // Agregar esta ruta en api.php dentro del grupo con middleware auth:api
+    Route::get('/grupos/{id}/shared-users', [GruposController::class, 'getSharedUsers']);
+    Route::resource("grupos", GruposController::class);
+
+    Route::get("documentos/config",[DocumentosController::class, 'config']);
+    Route::resource("documentos",DocumentosController::class);
+
+    Route::post('listas/reorder', [ListasController::class, 'reorder']);
+    Route::apiResource('listas',ListasController::class);
+    
+    
+
 
 });

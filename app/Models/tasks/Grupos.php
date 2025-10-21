@@ -37,26 +37,33 @@ class Grupos extends Model
         $this->attributes["updated_at"] = Carbon::now();
     }
 
-    // Relación con listas
+    // ✅ Relación con listas
     public function listas()
     {
         return $this->hasMany(Lista::class, 'grupo_id');
     }
 
-    // Relación con el propietario
+    // ✅ CRÍTICO: Relación con el usuario que creó el grupo
+    // Esta es la relación que estaba faltando y causaba el error
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    // ✅ Alias para compatibilidad (apunta a la misma relación)
     public function owner()
     {
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    // Relación many-to-many con usuarios compartidos
+    // ✅ Relación many-to-many con usuarios compartidos
     public function sharedUsers()
     {
         return $this->belongsToMany(User::class, 'grupo_user', 'grupo_id', 'user_id')
                     ->withTimestamps();
     }
 
-    // Scope para filtrar grupos accesibles por un usuario
+    // ✅ Scope para filtrar grupos accesibles por un usuario
     public function scopeAccessibleBy($query, $userId)
     {
         return $query->where('user_id', $userId)
@@ -65,4 +72,3 @@ class Grupos extends Model
                      });
     }
 }
-

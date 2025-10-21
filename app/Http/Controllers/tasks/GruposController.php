@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 class GruposController extends Controller
 {
+
     public function index(Request $request)
     {
         $search = $request->get("search");
@@ -62,17 +63,26 @@ class GruposController extends Controller
             $grupo = Grupos::create($request->all());
 
             // ✅ Cargar relaciones necesarias
-            $grupo->load('sharedUsers');
+            $grupo->load('sharedUsers', 'user');
 
-            // ✅ Enviar correo de forma segura (opcional)
+            // ✅ ENVIAR CORREO ELECTRÓNICO
             try {
-                if (auth()->user() && auth()->user()->email) {
-                    Mail::to(auth()->user()->email)
-                        ->send(new GrupoCreadoMail($grupo->name, auth()->user()->name));
+                $usuario = auth()->user();
+                
+                // Verificar que el usuario tenga email
+                if ($usuario && $usuario->email) {
+                    \Illuminate\Support\Facades\Mail::to($usuario->email)
+                        ->send(new \App\Mail\GrupoCreadoMail(
+                            $grupo->name,           // Nombre del grupo
+                            $usuario->name          // Nombre del usuario
+                        ));
+                    
+                    \Illuminate\Support\Facades\Log::info('✅ Correo enviado a: ' . $usuario->email);
                 }
+                
             } catch (\Exception $e) {
-                // Solo logear, no detener la ejecución
-                Log::warning('No se pudo enviar correo de grupo creado: ' . $e->getMessage());
+                // Solo logear el error, no detener la ejecución
+                \Illuminate\Support\Facades\Log::warning('⚠️ No se pudo enviar correo: ' . $e->getMessage());
             }
 
             // ✅ Devolver la MISMA estructura que index()
@@ -87,7 +97,7 @@ class GruposController extends Controller
                     "user" => $grupo->user,
                     "is_starred" => $grupo->is_starred ?? false,
                     "is_owner" => true,
-                    "shared_with" => [], // ✅ Array vacío (recién creado, no compartido)
+                    "shared_with" => [],
                     "created_at" => $grupo->created_at->format("Y-m-d h:i A")
                 ],
             ]);
@@ -100,9 +110,8 @@ class GruposController extends Controller
             ], 422);
 
         } catch (\Exception $e) {
-            // ✅ Logging del error real
-            Log::error('Error al crear grupo: ' . $e->getMessage());
-            Log::error($e->getTraceAsString());
+            \Illuminate\Support\Facades\Log::error('❌ Error al crear grupo: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error($e->getTraceAsString());
 
             return response()->json([
                 "message" => 500,

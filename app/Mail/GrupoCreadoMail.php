@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
@@ -13,18 +14,16 @@ class GrupoCreadoMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public $grupoNombre;
-    public $usuarioNombre;
-    public $grupoUrl;
+    public $nombreGrupo;
+    public $nombreUsuario;
 
     /**
      * Create a new message instance.
      */
-    public function __construct($grupoNombre, $usuarioNombre, $grupoId)
+    public function __construct($nombreGrupo, $nombreUsuario)
     {
-        $this->grupoNombre = $grupoNombre;
-        $this->usuarioNombre = $usuarioNombre;
-        $this->grupoUrl = env('FRONTEND_URL') . '/tasks/tareas/tablero/' . $grupoId;
+        $this->nombreGrupo = $nombreGrupo;
+        $this->nombreUsuario = $nombreUsuario;
     }
 
     /**
@@ -33,8 +32,8 @@ class GrupoCreadoMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            from: new Address(env('MAIL_FROM_ADDRESS'), env('MAIL_FROM_NAME')),
-            subject: '🎉 Grupo Creado: ' . $this->grupoNombre,
+            from: new Address(config('mail.from.address'), config('mail.from.name')),
+            subject: '✅ Grupo Creado Exitosamente - ' . $this->nombreGrupo,
         );
     }
 
@@ -44,17 +43,18 @@ class GrupoCreadoMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'emails.grupo-creado',
+            markdown: 'emails.grupo-creado',
             with: [
-                'grupoNombre' => $this->grupoNombre,
-                'usuarioNombre' => $this->usuarioNombre,
-                'grupoUrl' => $this->grupoUrl,
+                'nombreGrupo' => $this->nombreGrupo,
+                'nombreUsuario' => $this->nombreUsuario,
             ]
         );
     }
 
     /**
      * Get the attachments for the message.
+     *
+     * @return array<int, \Illuminate\Mail\Mailables\Attachment>
      */
     public function attachments(): array
     {

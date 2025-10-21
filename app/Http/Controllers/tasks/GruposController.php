@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use App\Mail\GrupoCreadoMail;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 
 class GruposController extends Controller
 {
@@ -19,7 +20,7 @@ class GruposController extends Controller
         // Obtener grupos propios y compartidos
         $grupos = Grupos::accessibleBy($userId)
             ->where('name', 'like', "%{$search}%")
-            ->orderBy('is_starred', 'desc') // ⭐ Primero los marcados
+            ->orderBy('is_starred', 'desc')
             ->orderBy('id', 'desc')
             ->paginate(25);
 
@@ -35,7 +36,13 @@ class GruposController extends Controller
                     "user" => $grupo->user,
                     "is_starred" => $grupo->is_starred,
                     "is_owner" => $grupo->user_id == $userId,
-                    "shared_with" => $grupo->sharedUsers->pluck('name')->toArray(),
+                    "shared_with" => $grupo->sharedUsers->map(function($user) {
+                        return [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'surname' => $user->surname
+                        ];
+                    }),
                     "created_at" => $grupo->created_at->format("Y-m-d h:i A")
                 ];
             }),
@@ -44,78 +51,150 @@ class GruposController extends Controller
 
     public function store(Request $request)
     {
-        $request->merge(['user_id' => auth()->id()]);
-        $grupo = Grupos::create($request->all());
+        try {
+            // ✅ Validación
+            $request->validate([
+                'name' => 'required|string|max:250|unique:grupos,name,NULL,id,deleted_at,NULL'
+            ]);
 
-        // Enviar correo
-        Mail::to(auth()->user()->email)
-            ->send(new GrupoCreadoMail($grupo->name, auth()->user()->name));
+            // ✅ Crear grupo
+            $request->merge(['user_id' => auth()->id()]);
+            $grupo = Grupos::create($request->all());
 
-        return response()->json([
-            "message" => 200,
-            "grupo" => [
-                "id" => $grupo->id,
-                "name" => $grupo->name,
-                "color" => $grupo->color,
-                "image" => $grupo->image ? env("APP_URL")."/storage/".$grupo->image : NULL,
-                "user_id" => $grupo->user_id,
-                "is_starred" => $grupo->is_starred ?? false,
-                "is_owner" => true,
-                "created_at" => $grupo->created_at->format("Y-m-d h:i A")
-            ],
-        ]);
+            // ✅ Cargar relaciones necesarias
+            $grupo->load('sharedUsers');
+
+            // ✅ Enviar correo de forma segura (opcional)
+            try {
+                if (auth()->user() && auth()->user()->email) {
+                    Mail::to(auth()->user()->email)
+                        ->send(new GrupoCreadoMail($grupo->name, auth()->user()->name));
+                }
+            } catch (\Exception $e) {
+                // Solo logear, no detener la ejecución
+                Log::warning('No se pudo enviar correo de grupo creado: ' . $e->getMessage());
+            }
+
+            // ✅ Devolver la MISMA estructura que index()
+            return response()->json([
+                "message" => 200,
+                "grupo" => [
+                    "id" => $grupo->id,
+                    "name" => $grupo->name,
+                    "color" => $grupo->color,
+                    "image" => $grupo->image ? env("APP_URL")."/storage/".$grupo->image : NULL,
+                    "user_id" => $grupo->user_id,
+                    "user" => $grupo->user,
+                    "is_starred" => $grupo->is_starred ?? false,
+                    "is_owner" => true,
+                    "shared_with" => [], // ✅ Array vacío (recién creado, no compartido)
+                    "created_at" => $grupo->created_at->format("Y-m-d h:i A")
+                ],
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                "message" => 403,
+                "message_text" => "El nombre del grupo ya existe o es inválido",
+                "errors" => $e->errors()
+            ], 422);
+
+        } catch (\Exception $e) {
+            // ✅ Logging del error real
+            Log::error('Error al crear grupo: ' . $e->getMessage());
+            Log::error($e->getTraceAsString());
+
+            return response()->json([
+                "message" => 500,
+                "message_text" => "Error interno al crear el grupo",
+                "error" => config('app.debug') ? $e->getMessage() : null
+            ], 500);
+        }
     }
 
     public function update(Request $request, string $id)
     {
-        $is_exits_grupo = Grupos::where("name",$request->name)
-                            ->where("id","<>",$id)->first();
-        if($is_exits_grupo){
+        try {
+            $is_exits_grupo = Grupos::where("name", $request->name)
+                                ->where("id", "<>", $id)
+                                ->whereNull('deleted_at')
+                                ->first();
+            
+            if ($is_exits_grupo) {
+                return response()->json([
+                    "message" => 403,
+                    "message_text" => "El nombre del grupo ya existe"
+                ], 422);
+            }
+            
+            $grupo = Grupos::findOrFail($id);
+            $grupo->update($request->all());
+            
+            // ✅ Cargar relaciones
+            $grupo->load('sharedUsers');
+            
             return response()->json([
-                "message" => 403,
-                "message_text" => "El nombre del grupo ya existe"
+                "message" => 200,
+                "grupo" => [
+                    "id" => $grupo->id,
+                    "name" => $grupo->name,
+                    "color" => $grupo->color,
+                    "image" => $grupo->image ? env("APP_URL")."/storage/".$grupo->image : NULL,
+                    "user_id" => $grupo->user_id,
+                    "user" => $grupo->user,
+                    "is_starred" => $grupo->is_starred,
+                    "is_owner" => $grupo->user_id == auth()->id(),
+                    "shared_with" => $grupo->sharedUsers->map(function($user) {
+                        return [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'surname' => $user->surname
+                        ];
+                    }),
+                    "created_at" => $grupo->created_at->format("Y-m-d h:i A")
+                ],
             ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al actualizar grupo: ' . $e->getMessage());
+            
+            return response()->json([
+                "message" => 500,
+                "message_text" => "Error al actualizar el grupo"
+            ], 500);
         }
-        
-        $grupo = Grupos::findOrFail($id);
-        $grupo->update($request->all());
-        
-        return response()->json([
-            "message" => 200,
-            "grupo" => [
-                "id" => $grupo->id,
-                "name" => $grupo->name,
-                "color" => $grupo->color,
-                "image" => $grupo->image ? env("APP_URL")."/storage/".$grupo->image : NULL,
-                "user_id" => $grupo->user_id,
-                "is_starred" => $grupo->is_starred,
-                "created_at" => $grupo->created_at->format("Y-m-d h:i A")
-            ],
-        ]);
     }
 
     public function destroy(string $id)
     {
-        $grupo = Grupos::findOrFail($id);
-        
-        // Verificar que el usuario sea el propietario
-        if ($grupo->user_id != auth()->id()) {
+        try {
+            $grupo = Grupos::findOrFail($id);
+            
+            // Verificar que el usuario sea el propietario
+            if ($grupo->user_id != auth()->id()) {
+                return response()->json([
+                    "message" => 403,
+                    "message_text" => "No tienes permiso para eliminar este grupo"
+                ], 403);
+            }
+            
+            $grupo->delete();
+            return response()->json(["message" => 200]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al eliminar grupo: ' . $e->getMessage());
+            
             return response()->json([
-                "message" => 403,
-                "message_text" => "No tienes permiso para eliminar este grupo"
-            ], 403);
+                "message" => 500,
+                "message_text" => "Error al eliminar el grupo"
+            ], 500);
         }
-        
-        $grupo->delete();
-        return response()->json(["message" => 200]);
     }
 
-    // ⭐ Marcar/Desmarcar grupo
     public function toggleStar($id)
     {
         $grupo = Grupos::findOrFail($id);
         
-        // Solo el propietario o usuarios compartidos pueden marcar
         if ($grupo->user_id != auth()->id() && !$grupo->sharedUsers->contains(auth()->id())) {
             return response()->json([
                 "message" => 403,
@@ -132,7 +211,6 @@ class GruposController extends Controller
         ]);
     }
 
-    // 📤 Compartir grupo con usuarios
     public function share(Request $request, $id)
     {
         $request->validate([
@@ -142,7 +220,6 @@ class GruposController extends Controller
 
         $grupo = Grupos::findOrFail($id);
         
-        // Verificar que el usuario sea el propietario
         if ($grupo->user_id != auth()->id()) {
             return response()->json([
                 "message" => 403,
@@ -150,7 +227,6 @@ class GruposController extends Controller
             ], 403);
         }
 
-        // Sincronizar usuarios (añade nuevos, mantiene existentes)
         $grupo->sharedUsers()->syncWithoutDetaching($request->user_ids);
 
         return response()->json([
@@ -165,12 +241,10 @@ class GruposController extends Controller
         ]);
     }
 
-    // 🔍 Buscar usuarios para compartir
     public function searchUsers(Request $request)
     {
         $search = $request->get('search', '');
         
-        // Si no hay búsqueda o es muy corta, no devolver nada
         if (empty(trim($search)) || strlen(trim($search)) < 2) {
             return response()->json([
                 'message' => 200,
@@ -205,9 +279,7 @@ class GruposController extends Controller
             })
         ]);
     }
-    
 
-    // ❌ Dejar de compartir con un usuario específico
     public function unshare($grupoId, $userId)
     {
         $grupo = Grupos::findOrFail($grupoId);
@@ -224,16 +296,10 @@ class GruposController extends Controller
         return response()->json(["message" => 200]);
     }
 
-    // Agregar este método en GruposController.php
-
-    /**
-     * Obtener usuarios con los que ya está compartido el grupo
-     */
     public function getSharedUsers($id)
     {
         $grupo = Grupos::findOrFail($id);
         
-        // Verificar acceso
         if ($grupo->user_id != auth()->id() && !$grupo->sharedUsers->contains(auth()->id())) {
             return response()->json([
                 "message" => 403,
@@ -256,5 +322,4 @@ class GruposController extends Controller
             })
         ]);
     }
-    
 }

@@ -103,7 +103,7 @@
                             
                             <p style="margin: 0 0 15px 0; color: #666666; font-size: 14px; text-align: center;">
                                 Saludos cordiales,<br>
-                                <strong>Equipo de Baby Ballet Market®{{ config('app.name') }}</strong>
+                                <strong>Equipo de Baby Ballet Market®</strong>
                             </p>
                             
                             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">

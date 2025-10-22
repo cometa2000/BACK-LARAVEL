@@ -32,7 +32,7 @@ class GruposController extends Controller
                     "id" => $grupo->id,
                     "name" => $grupo->name,
                     "color" => $grupo->color,
-                    "image" => $grupo->image ? env("APP_URL")."/storage/".$grupo->image : NULL,
+                    "image" => $grupo->image ,
                     "user_id" => $grupo->user_id,
                     "user" => $grupo->user,
                     "is_starred" => $grupo->is_starred,
@@ -74,7 +74,7 @@ class GruposController extends Controller
                     \Illuminate\Support\Facades\Mail::to($usuario->email)
                         ->send(new \App\Mail\GrupoCreadoMail(
                             $grupo->name,           // Nombre del grupo
-                            $usuario->name          // Nombre del usuario
+                            trim($usuario->name . ' ' . ($usuario->surname ?? ''))    // ✅ Nombre completo
                         ));
                     
                     \Illuminate\Support\Facades\Log::info('✅ Correo enviado a: ' . $usuario->email);
@@ -92,7 +92,7 @@ class GruposController extends Controller
                     "id" => $grupo->id,
                     "name" => $grupo->name,
                     "color" => $grupo->color,
-                    "image" => $grupo->image ? env("APP_URL")."/storage/".$grupo->image : NULL,
+                    "image" => $grupo->image,
                     "user_id" => $grupo->user_id,
                     "user" => $grupo->user,
                     "is_starred" => $grupo->is_starred ?? false,
@@ -119,6 +119,40 @@ class GruposController extends Controller
                 "error" => config('app.debug') ? $e->getMessage() : null
             ], 500);
         }
+    }
+
+    public function show(string $id)
+    {
+        $grupo = Grupos::with(['sharedUsers', 'user'])->findOrFail($id);
+
+        return response()->json([
+            'message' => 200,
+            'grupo' => [
+                'id' => $grupo->id,
+                'name' => $grupo->name,
+                'image' => $grupo->image,
+                'color' => $grupo->color,
+                'is_starred' => $grupo->is_starred,
+                'user_id' => $grupo->user_id,
+                'created_at' => $grupo->created_at ? $grupo->created_at->format('Y-m-d h:i A') : null,
+                'sharedUsers' => $grupo->sharedUsers->map(function ($user) {
+                    return [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'surname' => $user->surname,
+                        'email' => $user->email,
+                        'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                    ];
+                }),
+                'user' => [
+                    'id' => $grupo->user->id,
+                    'name' => $grupo->user->name,
+                    'surname' => $grupo->user->surname,
+                    'email' => $grupo->user->email,
+                    'avatar' => $grupo->user->avatar ? env("APP_URL")."/storage/".$grupo->user->avatar : null,
+                ],
+            ],
+        ]);
     }
 
     public function update(Request $request, string $id)
@@ -148,7 +182,7 @@ class GruposController extends Controller
                     "id" => $grupo->id,
                     "name" => $grupo->name,
                     "color" => $grupo->color,
-                    "image" => $grupo->image ? env("APP_URL")."/storage/".$grupo->image : NULL,
+                    "image" => $grupo->image,
                     "user_id" => $grupo->user_id,
                     "user" => $grupo->user,
                     "is_starred" => $grupo->is_starred,

@@ -112,7 +112,7 @@
                                 Este es un correo automático generado por el sistema.<br>
                                 Por favor, no respondas a este mensaje.<br>
                                 <br>
-                                © {{ date('Y') }} {{ config('app.name') }}. Todos los derechos reservados.
+                                © {{ date('Y') }} International Danginng Corporation SA de SV. Todos los derechos reservados.
                             </p>
                             
                         </td>

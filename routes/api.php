@@ -8,6 +8,8 @@ use App\Http\Controllers\tasks\GruposController;
 use App\Http\Controllers\tasks\ListasController;
 use App\Http\Controllers\tasks\TareasController;
 use App\Http\Controllers\RolePermissionController;
+use App\Http\Controllers\tasks\EtiquetasController;
+use App\Http\Controllers\tasks\ChecklistsController;
 use App\Http\Controllers\tasks\ComentariosController;
 use App\Http\Controllers\documents\DocumentosController;
 use App\Http\Controllers\Configuration\SucusaleController;
@@ -86,7 +88,22 @@ Route::group([
     Route::post('listas/reorder', [ListasController::class, 'reorder']);
     Route::apiResource('listas',ListasController::class);
     
-    
+    // Etiquetas
+    Route::get('/tareas/{tareaId}/etiquetas', [EtiquetasController::class, 'index']);
+    Route::post('/tareas/{tareaId}/etiquetas', [EtiquetasController::class, 'store']);
+    Route::put('/tareas/{tareaId}/etiquetas/{etiquetaId}', [EtiquetasController::class, 'update']);
+    Route::delete('/tareas/{tareaId}/etiquetas/{etiquetaId}', [EtiquetasController::class, 'destroy']);
+
+    // Checklists
+    Route::get('/tareas/{tareaId}/checklists', [ChecklistsController::class, 'index']);
+    Route::post('/tareas/{tareaId}/checklists', [ChecklistsController::class, 'store']);
+    Route::put('/tareas/{tareaId}/checklists/{checklistId}', [ChecklistsController::class, 'update']);
+    Route::delete('/tareas/{tareaId}/checklists/{checklistId}', [ChecklistsController::class, 'destroy']);
+
+    // Checklist Items
+    Route::post('/tareas/{tareaId}/checklists/{checklistId}/items', [ChecklistsController::class, 'addItem']);
+    Route::put('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}', [ChecklistsController::class, 'updateItem']);
+    Route::delete('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}', [ChecklistsController::class, 'destroyItem']);
 
 
 });

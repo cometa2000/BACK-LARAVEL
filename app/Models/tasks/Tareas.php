@@ -2,72 +2,148 @@
 
 namespace App\Models\tasks;
 
-use Carbon\Carbon;
-use App\Models\User;
-use App\Models\Configuration\Sucursale;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\User;
 
 class Tareas extends Model
 {
-    use HasFactory;
-    use SoftDeletes;
-    
-    protected $table = 'tareas';
-    protected $fillable = [  
-        "name",
-        "description",
-        "type_task",
-        "priority",
-        "start_date",
-        "due_date",
-        "status",
-        "sucursale_id",
-        "user_id",
-        "grupo_id",
-        "lista_id",
-        "estimated_time",
-        "file_path",
-        "budget",
-        "address",
-        "attendees",
-        "subtasks",
+    use HasFactory, SoftDeletes;
+
+    protected $fillable = [
+        'name',
+        'description',
+        'type_task',
+        'priority',
+        'start_date',
+        'due_date',
+        'status',
+        'sucursale_id',
+        'user_id',
+        'grupo_id',
+        'lista_id',
+        'orden',
+        'estimated_time',
+        'file_path',
+        'budget',
+        'address',
+        'attendees',
+        'subtasks'
     ];
 
-    public function setCreatedAtAttribute($value) {
-        date_default_timezone_set("America/Mexico_City");
-        $this->attributes["created_at"] = Carbon::now();
-    }
-    
-    public function setUpdatedAtAttribute($value) {
-        date_default_timezone_set("America/Mexico_City");
-        $this->attributes["updated_at"] = Carbon::now();
+    protected $casts = [
+        'start_date' => 'date',
+        'due_date' => 'date',
+        'subtasks' => 'array',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
+
+    // ========== RELACIONES EXISTENTES ==========
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
-    // Relaciones existentes
-    public function sucursale(){
-        return $this->belongsTo(Sucursale::class);
+    public function grupo()
+    {
+        return $this->belongsTo(Grupos::class, 'grupo_id');
     }
 
-    public function user(){
-        return $this->belongsTo(User::class);
+    public function lista()
+    {
+        return $this->belongsTo(Lista::class, 'lista_id');
     }
 
-    public function grupo(){
-        return $this->belongsTo(Grupos::class);
+    public function comentarios()
+    {
+        return $this->hasMany(Comentario::class, 'tarea_id');
     }
 
-    public function lista() {
-        return $this->belongsTo(Lista::class);
+    public function actividades()
+    {
+        return $this->hasMany(Actividad::class, 'tarea_id');
     }
 
-    // 🆕 Nuevas relaciones
-    public function comentarios() {
-        return $this->hasMany(Comentario::class, 'tarea_id')->orderBy('created_at', 'desc');
+    // ========== NUEVAS RELACIONES ==========
+
+    /**
+     * Relación con Etiquetas
+     * Una tarea puede tener múltiples etiquetas
+     */
+    public function etiquetas()
+    {
+        return $this->hasMany(Etiqueta::class, 'tarea_id')->orderBy('created_at', 'asc');
     }
 
-    public function actividades() {
-        return $this->hasMany(Actividad::class, 'tarea_id')->orderBy('created_at', 'desc');
+    /**
+     * Relación con Checklists
+     * Una tarea puede tener múltiples checklists
+     */
+    public function checklists()
+    {
+        return $this->hasMany(Checklist::class, 'tarea_id')->orderBy('orden', 'asc');
+    }
+
+    // ========== MÉTODOS ÚTILES ==========
+
+    /**
+     * Verificar si la tarea está vencida
+     */
+    public function isOverdue()
+    {
+        if (!$this->due_date) {
+            return false;
+        }
+        return $this->due_date->isPast();
+    }
+
+    /**
+     * Verificar si la fecha de vencimiento está próxima (dentro de 3 días)
+     */
+    public function isDueSoon()
+    {
+        if (!$this->due_date) {
+            return false;
+        }
+        $now = now();
+        return $this->due_date->isFuture() && $this->due_date->diffInDays($now) <= 3;
+    }
+
+    /**
+     * Obtener el progreso total de todos los checklists
+     */
+    public function getTotalChecklistProgress()
+    {
+        $checklists = $this->checklists;
+        
+        if ($checklists->isEmpty()) {
+            return 0;
+        }
+
+        $totalProgress = $checklists->sum('progress');
+        return round($totalProgress / $checklists->count());
+    }
+
+    /**
+     * Contar total de items en checklists
+     */
+    public function getTotalChecklistItems()
+    {
+        return $this->checklists->sum(function($checklist) {
+            return $checklist->items()->count();
+        });
+    }
+
+    /**
+     * Contar items completados en checklists
+     */
+    public function getCompletedChecklistItems()
+    {
+        return $this->checklists->sum(function($checklist) {
+            return $checklist->items()->where('completed', true)->count();
+        });
     }
 }

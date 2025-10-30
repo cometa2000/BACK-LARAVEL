@@ -67,6 +67,10 @@ class Tareas extends Model
         return $this->hasMany(Actividad::class, 'tarea_id');
     }
 
+    public function etiqueta(){
+        return $this->belongsTo(Etiqueta::class);
+    }
+
     // ========== NUEVAS RELACIONES ==========
 
     /**

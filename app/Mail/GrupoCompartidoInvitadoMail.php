@@ -10,20 +10,22 @@ use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Mail\Mailables\Address;
 
-class GrupoCreadoMail extends Mailable
+class GrupoCompartidoInvitadoMail extends Mailable
 {
     use Queueable, SerializesModels;
 
     public $nombreGrupo;
-    public $nombreUsuario;
+    public $nombreInvitado;
+    public $nombrePropietario;
 
     /**
      * Create a new message instance.
      */
-    public function __construct($nombreGrupo, $nombreUsuario)
+    public function __construct($nombreGrupo, $nombreInvitado, $nombrePropietario)
     {
         $this->nombreGrupo = $nombreGrupo;
-        $this->nombreUsuario = $nombreUsuario;
+        $this->nombreInvitado = $nombreInvitado;
+        $this->nombrePropietario = $nombrePropietario;
     }
 
     /**
@@ -33,7 +35,7 @@ class GrupoCreadoMail extends Mailable
     {
         return new Envelope(
             from: new Address(config('mail.from.address'), config('mail.from.name')),
-            subject: 'Grupo Creado Exitosamente - ' . $this->nombreGrupo,
+            subject: 'Has sido agregado al grupo: ' . $this->nombreGrupo,
         );
     }
 
@@ -43,10 +45,11 @@ class GrupoCreadoMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            markdown: 'emails.grupo-creado',
+            view: 'emails.grupo-compartido-invitado',
             with: [
                 'nombreGrupo' => $this->nombreGrupo,
-                'nombreUsuario' => $this->nombreUsuario,
+                'nombreInvitado' => $this->nombreInvitado,
+                'nombrePropietario' => $this->nombrePropietario,
             ]
         );
     }

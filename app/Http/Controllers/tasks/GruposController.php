@@ -256,32 +256,132 @@ class GruposController extends Controller
 
     public function share(Request $request, $id)
     {
-        $request->validate([
-            'user_ids' => 'required|array',
-            'user_ids.*' => 'exists:users,id'
-        ]);
+        try {
+            // Validar los datos
+            $request->validate([
+                'user_ids' => 'required|array',
+                'user_ids.*' => 'exists:users,id'
+            ]);
 
-        $grupo = Grupos::findOrFail($id);
-        
-        if ($grupo->user_id != auth()->id()) {
-            return response()->json([
-                "message" => 403,
-                "message_text" => "Solo el propietario puede compartir este grupo"
-            ], 403);
-        }
+            // Buscar el grupo
+            $grupo = Grupos::findOrFail($id);
+            
+            // Verificar que el usuario autenticado sea el propietario
+            if ($grupo->user_id != auth()->id()) {
+                return response()->json([
+                    "message" => 403,
+                    "message_text" => "Solo el propietario puede compartir este grupo"
+                ], 403);
+            }
 
-        $grupo->sharedUsers()->syncWithoutDetaching($request->user_ids);
+            // Obtener el propietario del grupo
+            $propietario = auth()->user();
+            $nombrePropietario = trim($propietario->name . ' ' . ($propietario->surname ?? ''));
 
-        return response()->json([
-            "message" => 200,
-            "shared_with" => $grupo->sharedUsers->map(function($user) {
+            // Obtener los usuarios que van a ser agregados (solo los nuevos)
+            $usuariosExistentes = $grupo->sharedUsers->pluck('id')->toArray();
+            $nuevosUsuariosIds = array_diff($request->user_ids, $usuariosExistentes);
+            
+            // Si no hay usuarios nuevos para agregar
+            if (empty($nuevosUsuariosIds)) {
+                return response()->json([
+                    "message" => 200,
+                    "message_text" => "Los usuarios ya están agregados al grupo",
+                    "shared_with" => $grupo->sharedUsers->map(function($user) {
+                        return [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'email' => $user->email
+                        ];
+                    })
+                ]);
+            }
+
+            // Obtener los datos de los nuevos usuarios
+            $nuevosUsuarios = User::whereIn('id', $nuevosUsuariosIds)->get();
+
+            // Compartir el grupo (agregar usuarios)
+            $grupo->sharedUsers()->syncWithoutDetaching($request->user_ids);
+
+            // ✅ ENVIAR CORREOS ELECTRÓNICOS
+            
+            // 1️⃣ Preparar datos de usuarios para el correo del propietario
+            $usuariosParaCorreo = $nuevosUsuarios->map(function($user) {
                 return [
-                    'id' => $user->id,
-                    'name' => $user->name,
+                    'name' => trim($user->name . ' ' . ($user->surname ?? '')),
                     'email' => $user->email
                 ];
-            })
-        ]);
+            })->toArray();
+
+            // 2️⃣ Enviar correo al PROPIETARIO (quien comparte)
+            try {
+                if ($propietario && $propietario->email) {
+                    \Illuminate\Support\Facades\Mail::to($propietario->email)
+                        ->send(new \App\Mail\GrupoCompartidoPropietarioMail(
+                            $grupo->name,
+                            $nombrePropietario,
+                            $usuariosParaCorreo
+                        ));
+                    
+                    \Illuminate\Support\Facades\Log::info('✅ Correo enviado al propietario: ' . $propietario->email);
+                }
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('❌ Error al enviar correo al propietario: ' . $e->getMessage());
+            }
+
+            // 3️⃣ Enviar correo a CADA USUARIO INVITADO
+            foreach ($nuevosUsuarios as $usuario) {
+                try {
+                    if ($usuario && $usuario->email) {
+                        $nombreInvitado = trim($usuario->name . ' ' . ($usuario->surname ?? ''));
+                        
+                        \Illuminate\Support\Facades\Mail::to($usuario->email)
+                            ->send(new \App\Mail\GrupoCompartidoInvitadoMail(
+                                $grupo->name,
+                                $nombreInvitado,
+                                $nombrePropietario
+                            ));
+                        
+                        \Illuminate\Support\Facades\Log::info('✅ Correo enviado al invitado: ' . $usuario->email);
+                    }
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error('❌ Error al enviar correo al invitado ' . $usuario->email . ': ' . $e->getMessage());
+                }
+            }
+
+            // Recargar la relación para obtener los usuarios actualizados
+            $grupo->load('sharedUsers');
+
+            return response()->json([
+                "message" => 200,
+                "message_text" => "Grupo compartido exitosamente y correos enviados",
+                "shared_with" => $grupo->sharedUsers->map(function($user) {
+                    return [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email
+                    ];
+                })
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Illuminate\Support\Facades\Log::warning('Validación fallida al compartir grupo', [
+                'errors' => $e->errors()
+            ]);
+            
+            return response()->json([
+                'message' => 422,
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error al compartir grupo: ' . $e->getMessage());
+            
+            return response()->json([
+                "message" => 500,
+                "message_text" => "Error al compartir el grupo"
+            ], 500);
+        }
     }
 
     public function searchUsers(Request $request)

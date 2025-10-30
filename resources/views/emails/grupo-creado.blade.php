@@ -20,7 +20,7 @@
                         <td style="background: linear-gradient(45deg, rgb(44, 154, 233), rgb(207, 56, 227)); padding: 40px 30px; text-align: center;">
                             
                             <!-- Logo (Reemplaza con tu logo real) -->
-                            <img src="https://babyballet.mx/wp-content/uploads/2023/01/babyballet-academia-de-danza-150x107-1.png" alt="Logo" style="max-width: 100px; margin-bottom: 20px;">
+                            <img src="{{ asset('storage/logo/logo.png') }}" alt="Logo" style="max-width: 100px; margin-bottom: 20px;">
                             
                             <h1 style="color: #ffffff; margin: 0; font-size: 32px; font-weight: 700; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                 Confirmación de creación de grupo

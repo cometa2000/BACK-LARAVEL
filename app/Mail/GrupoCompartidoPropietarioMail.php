@@ -10,20 +10,24 @@ use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Mail\Mailables\Address;
 
-class GrupoCreadoMail extends Mailable
+class GrupoCompartidoPropietarioMail extends Mailable
 {
     use Queueable, SerializesModels;
 
     public $nombreGrupo;
-    public $nombreUsuario;
+    public $nombrePropietario;
+    public $usuariosCompartidos;
+    public $cantidadUsuarios;
 
     /**
      * Create a new message instance.
      */
-    public function __construct($nombreGrupo, $nombreUsuario)
+    public function __construct($nombreGrupo, $nombrePropietario, $usuariosCompartidos)
     {
         $this->nombreGrupo = $nombreGrupo;
-        $this->nombreUsuario = $nombreUsuario;
+        $this->nombrePropietario = $nombrePropietario;
+        $this->usuariosCompartidos = $usuariosCompartidos;
+        $this->cantidadUsuarios = count($usuariosCompartidos);
     }
 
     /**
@@ -33,7 +37,7 @@ class GrupoCreadoMail extends Mailable
     {
         return new Envelope(
             from: new Address(config('mail.from.address'), config('mail.from.name')),
-            subject: 'Grupo Creado Exitosamente - ' . $this->nombreGrupo,
+            subject: 'Grupo Compartido: ' . $this->nombreGrupo,
         );
     }
 
@@ -43,10 +47,12 @@ class GrupoCreadoMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            markdown: 'emails.grupo-creado',
+            view: 'emails.grupo-compartido-propietario',
             with: [
                 'nombreGrupo' => $this->nombreGrupo,
-                'nombreUsuario' => $this->nombreUsuario,
+                'nombrePropietario' => $this->nombrePropietario,
+                'usuariosCompartidos' => $this->usuariosCompartidos,
+                'cantidadUsuarios' => $this->cantidadUsuarios,
             ]
         );
     }

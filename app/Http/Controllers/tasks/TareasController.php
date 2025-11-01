@@ -117,10 +117,9 @@ class TareasController extends Controller
     public function show($id)
     {
         try {
-            Log::info('TareasController@show - Iniciando', [
-                'tarea_id' => $id
-            ]);
+            Log::info('TareasController@show - Iniciando', ['tarea_id' => $id]);
 
+            // Buscar tarea con todas sus relaciones
             $tarea = Tareas::with([
                 'etiquetas',
                 'checklists.items',
@@ -136,6 +135,46 @@ class TareasController extends Controller
                 'tarea_name' => $tarea->name
             ]);
 
+            // ✅ Cargar adjuntos de forma separada y segura
+            $enlaces = [];
+            $archivos = [];
+
+            try {
+                // Obtener adjuntos desde la tabla tarea_adjuntos
+                $adjuntos = \App\Models\tasks\TareaAdjunto::where('tarea_id', $id)->get();
+                
+                Log::info('Adjuntos encontrados', [
+                    'count' => $adjuntos->count(),
+                    'adjuntos' => $adjuntos->toArray()
+                ]);
+
+                foreach ($adjuntos as $adjunto) {
+                    if ($adjunto->tipo === 'enlace') {
+                        $enlaces[] = [
+                            'id' => $adjunto->id,
+                            'url' => $adjunto->url,
+                            'nombre' => $adjunto->nombre,
+                        ];
+                    } elseif ($adjunto->tipo === 'archivo') {
+                        $archivos[] = [
+                            'id' => $adjunto->id,
+                            'nombre' => $adjunto->nombre,
+                            'tipo' => $adjunto->mime_type,
+                            'tiempo_subida' => $adjunto->created_at->toISOString(),
+                            'preview' => $adjunto->preview,
+                            'file_url' => $adjunto->file_path ? url('storage/' . $adjunto->file_path) : null
+                        ];
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::warning('Error al cargar adjuntos', [
+                    'error' => $e->getMessage(),
+                    'tarea_id' => $id
+                ]);
+                // Continuar sin adjuntos si hay error
+            }
+
+            // Construir respuesta
             $tareaData = [
                 'id' => $tarea->id,
                 'name' => $tarea->name,
@@ -158,10 +197,10 @@ class TareasController extends Controller
                 'lista' => $tarea->lista,
                 'grupo' => $tarea->grupo,
                 
-                // ✅ ADJUNTOS
-                'adjuntos' => $tarea->adjuntos ?? [
-                    'enlaces' => [],
-                    'archivos' => []
+                // ✅ ADJUNTOS procesados
+                'adjuntos' => [
+                    'enlaces' => $enlaces,
+                    'archivos' => $archivos
                 ],
                 
                 // Indicadores

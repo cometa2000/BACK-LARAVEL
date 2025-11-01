@@ -30,14 +30,12 @@ class Tareas extends Model
         'address',
         'attendees',
         'subtasks',
-        'adjuntos'
     ];
 
     protected $casts = [
         'start_date' => 'date',
         'due_date' => 'date',
         'subtasks' => 'array',
-        'adjuntos' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -67,6 +65,11 @@ class Tareas extends Model
     public function actividades()
     {
         return $this->hasMany(Actividad::class, 'tarea_id');
+    }
+
+    public function adjuntos()
+    {
+        return $this->hasMany(TareaAdjunto::class, 'tarea_id');
     }
 
     public function etiqueta(){

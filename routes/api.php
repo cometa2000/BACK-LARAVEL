@@ -11,6 +11,7 @@ use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\tasks\EtiquetasController;
 use App\Http\Controllers\tasks\ChecklistsController;
 use App\Http\Controllers\tasks\ComentariosController;
+use App\Http\Controllers\tasks\TareaAdjuntosController;
 use App\Http\Controllers\documents\DocumentosController;
 use App\Http\Controllers\Configuration\SucusaleController;
 use App\Http\Controllers\Configuration\WarehouseController;
@@ -105,5 +106,10 @@ Route::group([
     Route::put('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}', [ChecklistsController::class, 'updateItem']);
     Route::delete('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}', [ChecklistsController::class, 'destroyItem']);
 
+    
+    // Adjuntos de tareas
+    Route::get('/tareas/{tareaId}/adjuntos', [TareaAdjuntosController::class, 'index']);
+    Route::post('/tareas/{tareaId}/adjuntos', [TareaAdjuntosController::class, 'store']);
+    Route::delete('/tareas/{tareaId}/adjuntos/{adjuntoId}', [TareaAdjuntosController::class, 'destroy']);
 
 });

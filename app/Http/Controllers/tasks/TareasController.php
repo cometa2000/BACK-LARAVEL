@@ -121,7 +121,6 @@ class TareasController extends Controller
                 'tarea_id' => $id
             ]);
 
-            // Buscar tarea con todas sus relaciones
             $tarea = Tareas::with([
                 'etiquetas',
                 'checklists.items',
@@ -137,7 +136,6 @@ class TareasController extends Controller
                 'tarea_name' => $tarea->name
             ]);
 
-            // Construir respuesta
             $tareaData = [
                 'id' => $tarea->id,
                 'name' => $tarea->name,
@@ -159,6 +157,12 @@ class TareasController extends Controller
                 'user' => $tarea->user,
                 'lista' => $tarea->lista,
                 'grupo' => $tarea->grupo,
+                
+                // ✅ ADJUNTOS
+                'adjuntos' => $tarea->adjuntos ?? [
+                    'enlaces' => [],
+                    'archivos' => []
+                ],
                 
                 // Indicadores
                 'is_overdue' => $tarea->isOverdue(),

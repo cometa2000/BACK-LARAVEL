@@ -29,13 +29,15 @@ class Tareas extends Model
         'budget',
         'address',
         'attendees',
-        'subtasks'
+        'subtasks',
+        'adjuntos'
     ];
 
     protected $casts = [
         'start_date' => 'date',
         'due_date' => 'date',
         'subtasks' => 'array',
+        'adjuntos' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

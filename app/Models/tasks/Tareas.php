@@ -57,44 +57,39 @@ class Tareas extends Model
         return $this->belongsTo(Lista::class, 'lista_id');
     }
 
-    public function comentarios()
-    {
-        return $this->hasMany(Comentario::class, 'tarea_id');
-    }
+    
 
     public function actividades()
     {
         return $this->hasMany(Actividad::class, 'tarea_id');
     }
 
+    public function etiqueta(){
+        return $this->belongsTo(Etiqueta::class);
+    }
+
+
     public function adjuntos()
     {
         return $this->hasMany(TareaAdjunto::class, 'tarea_id');
     }
 
-    public function etiqueta(){
-        return $this->belongsTo(Etiqueta::class);
-    }
-
-    // ========== NUEVAS RELACIONES ==========
-
-    /**
-     * Relación con Etiquetas
-     * Una tarea puede tener múltiples etiquetas
-     */
     public function etiquetas()
     {
         return $this->hasMany(Etiqueta::class, 'tarea_id')->orderBy('created_at', 'asc');
     }
 
-    /**
-     * Relación con Checklists
-     * Una tarea puede tener múltiples checklists
-     */
     public function checklists()
     {
         return $this->hasMany(Checklist::class, 'tarea_id')->orderBy('orden', 'asc');
     }
+
+    public function comentarios()
+    {
+        return $this->hasMany(Comentario::class, 'tarea_id');
+    }
+
+    
 
     // ========== MÉTODOS ÚTILES ==========
 

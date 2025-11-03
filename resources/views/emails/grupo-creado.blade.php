@@ -103,7 +103,7 @@
                             
                             <p style="margin: 0 0 15px 0; color: #666666; font-size: 14px; text-align: center;">
                                 Saludos cordiales,<br>
-                                <strong>Equipo de Baby Ballet Market®</strong>
+                                <strong>Equipo de Baby Ballet Marbet®</strong>
                             </p>
                             
                             <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
@@ -112,7 +112,7 @@
                                 Este es un correo automático generado por el sistema.<br>
                                 Por favor, no respondas a este mensaje.<br>
                                 <br>
-                                © {{ date('Y') }} International Danginng Corporation SA de SV. Todos los derechos reservados.
+                                © {{ date('Y') }} International Danginng Corporation S.A. de S.V. Todos los derechos reservados.
                             </p>
                             
                         </td>

@@ -89,6 +89,16 @@ class Tareas extends Model
         return $this->hasMany(Comentario::class, 'tarea_id');
     }
 
+    public function assignedUsers()
+    {
+        return $this->belongsToMany(
+            \App\Models\User::class,
+            'tarea_user',
+            'tarea_id',
+            'user_id'
+        )->withTimestamps();
+    }
+
     
 
     // ========== MÉTODOS ÚTILES ==========

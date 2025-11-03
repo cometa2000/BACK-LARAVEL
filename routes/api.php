@@ -112,4 +112,9 @@ Route::group([
     Route::post('/tareas/{tareaId}/adjuntos', [TareaAdjuntosController::class, 'store']);
     Route::delete('/tareas/{tareaId}/adjuntos/{adjuntoId}', [TareaAdjuntosController::class, 'destroy']);
 
+    // Rutas de miembros de tareas
+    Route::post('/tareas/{tarea}/assign-members', [TareasController::class, 'assignMembers']);
+    Route::get('/tareas/{tarea}/members', [TareasController::class, 'getMembers']);
+    Route::delete('/tareas/{tarea}/unassign-member/{user}', [TareasController::class, 'unassignMember']);
+
 });

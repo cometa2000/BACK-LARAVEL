@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\tasks;
 
-use Illuminate\Http\Request;
-use App\Http\Controllers\Controller;
 use App\Models\tasks\Tareas;
+use Illuminate\Http\Request;
+use App\Models\tasks\Timeline;
 use App\Models\tasks\Actividad;
 use Illuminate\Support\Facades\Log;
+use App\Http\Controllers\Controller;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class TareasController extends Controller
@@ -28,7 +29,8 @@ class TareasController extends Controller
                 'checklists.items',
                 'user',
                 'lista',
-                'grupo'
+                'grupo',
+                'assignedUsers'
             ]);
 
             // Filtros opcionales
@@ -71,6 +73,17 @@ class TareasController extends Controller
                             'progress' => $checklist->progress,
                             'items_count' => $checklist->items->count(),
                             'completed_items' => $checklist->items->where('completed', true)->count()
+                        ];
+                    }),
+
+                    // AGREGADO: Miembros asignados
+                    'assigned_members' => $tarea->assignedUsers->map(function($user) {
+                        return [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'surname' => $user->surname,
+                            'email' => $user->email,
+                            'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
                         ];
                     }),
                     
@@ -127,7 +140,8 @@ class TareasController extends Controller
                 'actividades.user',
                 'user',
                 'lista',
-                'grupo'
+                'grupo',
+                'assignedUsers'
             ])->findOrFail($id);
 
             Log::info('TareasController@show - Tarea encontrada', [
@@ -135,7 +149,7 @@ class TareasController extends Controller
                 'tarea_name' => $tarea->name
             ]);
 
-            // ✅ Cargar adjuntos de forma separada y segura
+            // Cargar adjuntos de forma separada y segura
             $enlaces = [];
             $archivos = [];
 
@@ -196,8 +210,19 @@ class TareasController extends Controller
                 'user' => $tarea->user,
                 'lista' => $tarea->lista,
                 'grupo' => $tarea->grupo,
+
+                // AGREGADO: Miembros asignados
+                'assigned_members' => $tarea->assignedUsers->map(function($user) {
+                    return [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'surname' => $user->surname,
+                        'email' => $user->email,
+                        'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                    ];
+                }),
                 
-                // ✅ ADJUNTOS procesados
+                // ADJUNTOS procesados
                 'adjuntos' => [
                     'enlaces' => $enlaces,
                     'archivos' => $archivos
@@ -644,4 +669,268 @@ class TareasController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * POST /api/tareas/{tareaId}/assign-members
+     * Body: { user_ids: [1, 2, 3] }
+     */
+    public function assignMembers(Request $request, $tareaId)
+    {
+        try {
+            Log::info('TareasController@assignMembers - Iniciando', [
+                'tarea_id' => $tareaId,
+                'user_ids' => $request->user_ids
+            ]);
+
+            $tarea = Tareas::findOrFail($tareaId);
+            
+            // Validar que el usuario tenga permiso (es el creador o miembro del grupo)
+            $grupo = $tarea->lista->grupo;
+            if ($grupo->user_id !== auth()->id() && 
+                !$grupo->sharedUsers->contains(auth()->id())) {
+                return response()->json([
+                    'message' => 403,
+                    'message_text' => 'No tienes permiso para asignar miembros a esta tarea'
+                ], 403);
+            }
+            
+            // Validar que los usuarios pertenezcan al grupo
+            $validUserIds = collect($request->user_ids)->filter(function($userId) use ($grupo) {
+                return $grupo->sharedUsers->contains($userId) || $grupo->user_id == $userId;
+            });
+            
+            if ($validUserIds->isEmpty()) {
+                return response()->json([
+                    'message' => 400,
+                    'message_text' => 'Los usuarios seleccionados no pertenecen al grupo'
+                ], 400);
+            }
+            
+            // Asignar miembros (sin duplicar)
+            $tarea->assignedUsers()->syncWithoutDetaching($validUserIds->toArray());
+            
+            // Recargar relaciones
+            $tarea->load('assignedUsers');
+            
+            // Registrar en el timeline
+            Timeline::create([
+                'tarea_id' => $tarea->id,
+                'user_id' => auth()->id(),
+                'action' => 'assigned_members',
+                'details' => [
+                    'members' => $tarea->assignedUsers->map(function($user) {
+                        return [
+                            'id' => $user->id,
+                            'name' => $user->name . ' ' . ($user->surname ?? '')
+                        ];
+                    })->toArray()
+                ]
+            ]);
+            
+            Log::info('TareasController@assignMembers - Miembros asignados', [
+                'tarea_id' => $tarea->id,
+                'members_count' => $tarea->assignedUsers->count()
+            ]);
+            
+            return response()->json([
+                'message' => 200,
+                'message_text' => 'Miembros asignados correctamente',
+                'tarea' => $this->formatTarea($tarea),
+                'members' => $tarea->assignedUsers->map(function($user) {
+                    return [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'surname' => $user->surname,
+                        'email' => $user->email,
+                        'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                    ];
+                })
+            ]);
+            
+        } catch (ModelNotFoundException $e) {
+            Log::warning('TareasController@assignMembers - Tarea no encontrada', [
+                'tarea_id' => $tareaId
+            ]);
+
+            return response()->json([
+                'message' => 404,
+                'message_text' => 'Tarea no encontrada'
+            ], 404);
+
+        } catch (\Exception $e) {
+            Log::error('TareasController@assignMembers - Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'message' => 500,
+                'message_text' => 'Error al asignar miembros'
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /api/tareas/{tareaId}/members
+     */
+    public function getMembers($tareaId)
+    {
+        try {
+            Log::info('TareasController@getMembers - Iniciando', [
+                'tarea_id' => $tareaId
+            ]);
+
+            $tarea = Tareas::with('assignedUsers')->findOrFail($tareaId);
+            
+            $members = $tarea->assignedUsers->map(function($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'surname' => $user->surname,
+                    'email' => $user->email,
+                    'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                ];
+            });
+
+            Log::info('TareasController@getMembers - Miembros obtenidos', [
+                'tarea_id' => $tareaId,
+                'members_count' => $members->count()
+            ]);
+            
+            return response()->json([
+                'message' => 200,
+                'members' => $members
+            ]);
+            
+        } catch (ModelNotFoundException $e) {
+            Log::warning('TareasController@getMembers - Tarea no encontrada', [
+                'tarea_id' => $tareaId
+            ]);
+
+            return response()->json([
+                'message' => 404,
+                'message_text' => 'Tarea no encontrada'
+            ], 404);
+
+        } catch (\Exception $e) {
+            Log::error('TareasController@getMembers - Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'message' => 500,
+                'message_text' => 'Error al obtener miembros'
+            ], 500);
+        }
+    }
+
+
+    /**
+     * DELETE /api/tareas/{tareaId}/unassign-member/{userId}
+     */
+    public function unassignMember($tareaId, $userId)
+    {
+        try {
+            Log::info('TareasController@unassignMember - Iniciando', [
+                'tarea_id' => $tareaId,
+                'user_id' => $userId
+            ]);
+
+            $tarea = Tareas::findOrFail($tareaId);
+            
+            // Validar permisos
+            $grupo = $tarea->lista->grupo;
+            if ($grupo->user_id !== auth()->id() && 
+                !$grupo->sharedUsers->contains(auth()->id())) {
+                return response()->json([
+                    'message' => 403,
+                    'message_text' => 'No tienes permiso para desasignar miembros'
+                ], 403);
+            }
+            
+            // Obtener datos del usuario antes de desasignar
+            $user = \App\Models\User::find($userId);
+            
+            if (!$user) {
+                return response()->json([
+                    'message' => 404,
+                    'message_text' => 'Usuario no encontrado'
+                ], 404);
+            }
+
+            // Desasignar
+            $tarea->assignedUsers()->detach($userId);
+            
+            // Registrar en el timeline
+            Timeline::create([
+                'tarea_id' => $tarea->id,
+                'user_id' => auth()->id(),
+                'action' => 'unassigned_member',
+                'details' => [
+                    'member' => [
+                        'id' => $user->id,
+                        'name' => $user->name . ' ' . ($user->surname ?? '')
+                    ]
+                ]
+            ]);
+            
+            Log::info('TareasController@unassignMember - Miembro desasignado', [
+                'tarea_id' => $tarea->id,
+                'user_id' => $userId
+            ]);
+            
+            return response()->json([
+                'message' => 200,
+                'message_text' => 'Miembro desasignado correctamente',
+                'tarea' => $this->formatTarea($tarea)
+            ]);
+            
+        } catch (ModelNotFoundException $e) {
+            Log::warning('TareasController@unassignMember - Tarea no encontrada', [
+                'tarea_id' => $tareaId
+            ]);
+
+            return response()->json([
+                'message' => 404,
+                'message_text' => 'Tarea no encontrada'
+            ], 404);
+
+        } catch (\Exception $e) {
+            Log::error('TareasController@unassignMember - Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'message' => 500,
+                'message_text' => 'Error al desasignar miembro'
+            ], 500);
+        }
+    }
+
+    private function formatTarea($tarea)
+    {
+        $tarea->load(['assignedUsers', 'lista.grupo', 'etiquetas', 'checklists']);
+        
+        return [
+            'id' => $tarea->id,
+            'name' => $tarea->name,
+            'description' => $tarea->description,
+            'status' => $tarea->status,
+            'priority' => $tarea->priority,
+            'start_date' => $tarea->start_date,
+            'due_date' => $tarea->due_date,
+            'assigned_members' => $tarea->assignedUsers->map(function($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'surname' => $user->surname,
+                    'email' => $user->email,
+                    'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                ];
+            })
+        ];
+    }
+
 }

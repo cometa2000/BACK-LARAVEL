@@ -30,6 +30,11 @@ class Tareas extends Model
         'address',
         'attendees',
         'subtasks',
+        // 🆕 Campos de notificaciones
+        'notifications_enabled',
+        'notification_days_before',
+        'notification_sent_at',
+        'overdue_notification_sent_at',
     ];
 
     protected $casts = [
@@ -38,6 +43,10 @@ class Tareas extends Model
         'subtasks' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        // 🆕 Casts para campos de notificaciones
+        'notifications_enabled' => 'boolean',
+        'notification_sent_at' => 'datetime',
+        'overdue_notification_sent_at' => 'datetime',
     ];
 
     // ========== RELACIONES EXISTENTES ==========
@@ -57,8 +66,6 @@ class Tareas extends Model
         return $this->belongsTo(Lista::class, 'lista_id');
     }
 
-    
-
     public function actividades()
     {
         return $this->hasMany(Actividad::class, 'tarea_id');
@@ -67,7 +74,6 @@ class Tareas extends Model
     public function etiqueta(){
         return $this->belongsTo(Etiqueta::class);
     }
-
 
     public function adjuntos()
     {

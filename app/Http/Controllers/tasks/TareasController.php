@@ -337,8 +337,8 @@ class TareasController extends Controller
     }
 
     /**
-     * MÉTODO UPDATE
-     * Actualizar una tarea existente
+     * MÉTODO UPDATE - ACTUALIZADO
+     * Actualizar una tarea existente (con soporte para notificaciones)
      */
     public function update(Request $request, $id)
     {
@@ -357,6 +357,9 @@ class TareasController extends Controller
                 'due_date' => 'nullable|date|after_or_equal:start_date',
                 'priority' => 'sometimes|in:low,medium,high',
                 'status' => 'sometimes|in:pendiente,en_progreso,completada',
+                // 🆕 Validación para notificaciones
+                'notifications_enabled' => 'sometimes|boolean',
+                'notification_days_before' => 'nullable|integer|min:1|max:7',
             ]);
 
             // Guardar valores antiguos para el registro de actividad
@@ -365,7 +368,34 @@ class TareasController extends Controller
                 'due_date' => $tarea->due_date,
                 'status' => $tarea->status,
                 'description' => $tarea->description,
+                'notifications_enabled' => $tarea->notifications_enabled,
+                'notification_days_before' => $tarea->notification_days_before,
             ];
+
+            // 🆕 Si se cambia la fecha de vencimiento o las notificaciones, resetear las notificaciones enviadas
+            if ($request->has('due_date') && $oldData['due_date'] != $request->due_date) {
+                $tarea->notification_sent_at = null;
+                $tarea->overdue_notification_sent_at = null;
+            }
+
+            if ($request->has('notifications_enabled')) {
+                if ($request->notifications_enabled == false) {
+                    // Si se deshabilitan las notificaciones, limpiar configuración
+                    $tarea->notification_days_before = null;
+                    $tarea->notification_sent_at = null;
+                    $tarea->overdue_notification_sent_at = null;
+                } elseif ($oldData['notifications_enabled'] == false && $request->notifications_enabled == true) {
+                    // Si se habilitan las notificaciones, resetear marcadores
+                    $tarea->notification_sent_at = null;
+                    $tarea->overdue_notification_sent_at = null;
+                }
+            }
+
+            // 🆕 Si se cambia el número de días de notificación, resetear la notificación previa
+            if ($request->has('notification_days_before') && 
+                $oldData['notification_days_before'] != $request->notification_days_before) {
+                $tarea->notification_sent_at = null;
+            }
 
             // Actualizar la tarea
             $tarea->update($request->all());
@@ -397,6 +427,23 @@ class TareasController extends Controller
                 ]);
             }
 
+            // 🆕 Registrar cambios en notificaciones
+            if ($request->has('notifications_enabled') && 
+                $oldData['notifications_enabled'] != $request->notifications_enabled) {
+                Actividad::create([
+                    'type' => 'notifications_changed',
+                    'description' => $request->notifications_enabled 
+                        ? 'habilitó las notificaciones de vencimiento' 
+                        : 'deshabilitó las notificaciones de vencimiento',
+                    'tarea_id' => $tarea->id,
+                    'user_id' => auth()->id(),
+                    'changes' => json_encode([
+                        'enabled' => $request->notifications_enabled,
+                        'days_before' => $request->notification_days_before
+                    ])
+                ]);
+            }
+
             if ($request->has('status') && $oldData['status'] != $request->status) {
                 Actividad::create([
                     'type' => 'status_changed',
@@ -423,7 +470,9 @@ class TareasController extends Controller
             $tarea->load(['etiquetas', 'checklists.items', 'user', 'lista', 'grupo']);
 
             Log::info('TareasController@update - Tarea actualizada', [
-                'tarea_id' => $tarea->id
+                'tarea_id' => $tarea->id,
+                'notifications_enabled' => $tarea->notifications_enabled,
+                'notification_days_before' => $tarea->notification_days_before,
             ]);
 
             return response()->json([

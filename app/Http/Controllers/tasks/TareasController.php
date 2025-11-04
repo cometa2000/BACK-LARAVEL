@@ -5,9 +5,11 @@ namespace App\Http\Controllers\tasks;
 use App\Models\tasks\Tareas;
 use Illuminate\Http\Request;
 use App\Models\tasks\Timeline;
+use App\Mail\TareaAsignadaMail;
 use App\Models\tasks\Actividad;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class TareasController extends Controller
@@ -705,9 +707,53 @@ class TareasController extends Controller
                     'message_text' => 'Los usuarios seleccionados no pertenecen al grupo'
                 ], 400);
             }
+
+            // Obtener IDs de usuarios ya asignados
+            $usuariosYaAsignados = $tarea->assignedUsers->pluck('id')->toArray();
+            
+            // Filtrar solo los nuevos usuarios (que no estaban asignados antes)
+            $nuevosUsuarios = $validUserIds->filter(function($userId) use ($usuariosYaAsignados) {
+                return !in_array($userId, $usuariosYaAsignados);
+            });
             
             // Asignar miembros (sin duplicar)
             $tarea->assignedUsers()->syncWithoutDetaching($validUserIds->toArray());
+
+            // 📧 ENVIAR CORREOS SOLO A LOS NUEVOS USUARIOS ASIGNADOS
+            if ($nuevosUsuarios->isNotEmpty()) {
+                $asignador = auth()->user();
+                $nombreAsignador = $asignador->name . ' ' . ($asignador->surname ?? '');
+                
+                // Obtener información completa de los nuevos usuarios
+                $usuariosNuevos = \App\Models\User::whereIn('id', $nuevosUsuarios)->get();
+                
+                foreach ($usuariosNuevos as $usuario) {
+                    try {
+                        $nombreUsuario = $usuario->name . ' ' . ($usuario->surname ?? '');
+                        
+                        Mail::to($usuario->email)->send(
+                            new TareaAsignadaMail(
+                                $nombreUsuario,
+                                $nombreAsignador,
+                                $tarea,
+                                $grupo,
+                                $tarea->lista
+                            )
+                        );
+                        
+                        Log::info('✅ Correo enviado a:', [
+                            'email' => $usuario->email,
+                            'nombre' => $nombreUsuario
+                        ]);
+                        
+                    } catch (\Exception $emailError) {
+                        Log::error('❌ Error al enviar correo a ' . $usuario->email, [
+                            'error' => $emailError->getMessage()
+                        ]);
+                        // Continuamos con los demás usuarios aunque falle uno
+                    }
+                }
+            }
             
             // Recargar relaciones
             $tarea->load('assignedUsers');
@@ -729,7 +775,9 @@ class TareasController extends Controller
             
             Log::info('TareasController@assignMembers - Miembros asignados', [
                 'tarea_id' => $tarea->id,
-                'members_count' => $tarea->assignedUsers->count()
+                'members_count' => $tarea->assignedUsers->count(),
+                'nuevos_miembros' => $nuevosUsuarios->count(),
+                'correos_enviados' => $nuevosUsuarios->count()
             ]);
             
             return response()->json([
@@ -744,7 +792,8 @@ class TareasController extends Controller
                         'email' => $user->email,
                         'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
                     ];
-                })
+                }),
+                'notificaciones_enviadas' => $nuevosUsuarios->count()
             ]);
             
         } catch (ModelNotFoundException $e) {

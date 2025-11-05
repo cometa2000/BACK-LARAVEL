@@ -337,7 +337,7 @@ class TareasController extends Controller
     }
 
     /**
-     * MÉTODO UPDATE - ACTUALIZADO
+     * MÉTODO UPDATE - CON NOTIFICACIONES DE TAREA COMPLETADA
      * Actualizar una tarea existente (con soporte para notificaciones)
      */
     public function update(Request $request, $id)
@@ -357,7 +357,6 @@ class TareasController extends Controller
                 'due_date' => 'nullable|date|after_or_equal:start_date',
                 'priority' => 'sometimes|in:low,medium,high',
                 'status' => 'sometimes|in:pendiente,en_progreso,completada',
-                // 🆕 Validación para notificaciones
                 'notifications_enabled' => 'sometimes|boolean',
                 'notification_days_before' => 'nullable|integer|min:1|max:7',
             ]);
@@ -380,18 +379,15 @@ class TareasController extends Controller
 
             if ($request->has('notifications_enabled')) {
                 if ($request->notifications_enabled == false) {
-                    // Si se deshabilitan las notificaciones, limpiar configuración
                     $tarea->notification_days_before = null;
                     $tarea->notification_sent_at = null;
                     $tarea->overdue_notification_sent_at = null;
                 } elseif ($oldData['notifications_enabled'] == false && $request->notifications_enabled == true) {
-                    // Si se habilitan las notificaciones, resetear marcadores
                     $tarea->notification_sent_at = null;
                     $tarea->overdue_notification_sent_at = null;
                 }
             }
 
-            // 🆕 Si se cambia el número de días de notificación, resetear la notificación previa
             if ($request->has('notification_days_before') && 
                 $oldData['notification_days_before'] != $request->notification_days_before) {
                 $tarea->notification_sent_at = null;
@@ -427,7 +423,6 @@ class TareasController extends Controller
                 ]);
             }
 
-            // 🆕 Registrar cambios en notificaciones
             if ($request->has('notifications_enabled') && 
                 $oldData['notifications_enabled'] != $request->notifications_enabled) {
                 Actividad::create([
@@ -444,7 +439,9 @@ class TareasController extends Controller
                 ]);
             }
 
+            // 🎯 NUEVA FUNCIONALIDAD: Enviar notificaciones cuando la tarea se completa
             if ($request->has('status') && $oldData['status'] != $request->status) {
+                // Registrar actividad de cambio de estado
                 Actividad::create([
                     'type' => 'status_changed',
                     'description' => 'cambió el estado',
@@ -455,6 +452,16 @@ class TareasController extends Controller
                         'new_status' => $request->status
                     ])
                 ]);
+
+                // 📧 Si el nuevo estado es "completada", enviar notificaciones
+                if ($request->status === 'completada') {
+                    Log::info('✅ Tarea completada - Iniciando envío de notificaciones', [
+                        'tarea_id' => $tarea->id,
+                        'tarea_name' => $tarea->name
+                    ]);
+
+                    $this->enviarNotificacionesTareaCompletada($tarea);
+                }
             }
 
             if ($request->has('description') && $oldData['description'] != $request->description) {
@@ -467,7 +474,7 @@ class TareasController extends Controller
             }
 
             // Recargar con relaciones
-            $tarea->load(['etiquetas', 'checklists.items', 'user', 'lista', 'grupo']);
+            $tarea->load(['etiquetas', 'checklists.items', 'user', 'lista', 'grupo', 'assignedUsers']);
 
             Log::info('TareasController@update - Tarea actualizada', [
                 'tarea_id' => $tarea->id,
@@ -514,6 +521,7 @@ class TareasController extends Controller
             ], 500);
         }
     }
+
 
     /**
      * MÉTODO DESTROY
@@ -1029,6 +1037,137 @@ class TareasController extends Controller
                 ];
             })
         ];
+    }
+
+
+    /**
+     * 🆕 MÉTODO PRIVADO: Enviar notificaciones cuando una tarea se completa
+     * 
+     * Envía correos a:
+     * 1. Creador de la tarea
+     * 2. Todos los miembros asignados
+     */
+    private function enviarNotificacionesTareaCompletada($tarea)
+    {
+        try {
+            // Cargar relaciones necesarias
+            $tarea->load(['user', 'assignedUsers', 'lista.grupo']);
+
+            $grupo = $tarea->lista->grupo;
+            $lista = $tarea->lista;
+            
+            // Obtener información del usuario que completó la tarea
+            $completador = auth()->user();
+            $nombreCompletador = $completador->name . ' ' . ($completador->surname ?? '');
+
+            // 📬 Colección para rastrear correos enviados (evitar duplicados)
+            $correosEnviados = collect();
+
+            // 1️⃣ Enviar correo al CREADOR de la tarea (si no es quien la completó)
+            if ($tarea->user && $tarea->user->id !== $completador->id) {
+                try {
+                    $nombreCreador = $tarea->user->name . ' ' . ($tarea->user->surname ?? '');
+                    
+                    Mail::to($tarea->user->email)->send(
+                        new \App\Mail\TareaCompletadaMail(
+                            $nombreCreador,
+                            $nombreCompletador,
+                            $tarea,
+                            $grupo,
+                            $lista,
+                            true // Es el creador
+                        )
+                    );
+                    
+                    $correosEnviados->push($tarea->user->email);
+                    
+                    Log::info('✅ Correo enviado al creador:', [
+                        'email' => $tarea->user->email,
+                        'nombre' => $nombreCreador
+                    ]);
+                    
+                } catch (\Exception $emailError) {
+                    Log::error('❌ Error al enviar correo al creador:', [
+                        'email' => $tarea->user->email,
+                        'error' => $emailError->getMessage()
+                    ]);
+                }
+            }
+
+            // 2️⃣ Enviar correos a MIEMBROS ASIGNADOS (excepto quien completó y el creador)
+            if ($tarea->assignedUsers && $tarea->assignedUsers->count() > 0) {
+                foreach ($tarea->assignedUsers as $miembro) {
+                    // Saltar si es quien completó la tarea
+                    if ($miembro->id === $completador->id) {
+                        continue;
+                    }
+                    
+                    // Saltar si es el creador (ya se le envió)
+                    if ($tarea->user && $miembro->id === $tarea->user->id) {
+                        continue;
+                    }
+                    
+                    // Evitar enviar correos duplicados
+                    if ($correosEnviados->contains($miembro->email)) {
+                        continue;
+                    }
+                    
+                    try {
+                        $nombreMiembro = $miembro->name . ' ' . ($miembro->surname ?? '');
+                        
+                        Mail::to($miembro->email)->send(
+                            new \App\Mail\TareaCompletadaMail(
+                                $nombreMiembro,
+                                $nombreCompletador,
+                                $tarea,
+                                $grupo,
+                                $lista,
+                                false // No es el creador
+                            )
+                        );
+                        
+                        $correosEnviados->push($miembro->email);
+                        
+                        Log::info('✅ Correo enviado a miembro asignado:', [
+                            'email' => $miembro->email,
+                            'nombre' => $nombreMiembro
+                        ]);
+                        
+                    } catch (\Exception $emailError) {
+                        Log::error('❌ Error al enviar correo a miembro:', [
+                            'email' => $miembro->email,
+                            'error' => $emailError->getMessage()
+                        ]);
+                    }
+                }
+            }
+
+            // 📊 Registrar en timeline
+            Timeline::create([
+                'tarea_id' => $tarea->id,
+                'user_id' => auth()->id(),
+                'action' => 'task_completed',
+                'details' => [
+                    'completed_by' => $nombreCompletador,
+                    'notifications_sent' => $correosEnviados->count(),
+                    'notified_emails' => $correosEnviados->toArray()
+                ]
+            ]);
+
+            Log::info('📧 Notificaciones de tarea completada enviadas', [
+                'tarea_id' => $tarea->id,
+                'tarea_name' => $tarea->name,
+                'total_notificaciones' => $correosEnviados->count(),
+                'correos' => $correosEnviados->toArray()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error general al enviar notificaciones de tarea completada:', [
+                'tarea_id' => $tarea->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
     }
 
 }

@@ -88,6 +88,13 @@ Route::group([
 
     Route::post('listas/reorder', [ListasController::class, 'reorder']);
     Route::apiResource('listas',ListasController::class);
+
+    // Rutas de permisos de grupos (solo para propietarios)
+    Route::get('/grupos/{id}/permissions', [GruposController::class, 'getPermissions']);
+    Route::post('/grupos/{id}/permissions/type', [GruposController::class, 'updatePermissionType']);
+    Route::post('/grupos/{grupoId}/permissions/user/{userId}', [GruposController::class, 'updateUserPermission']);
+    Route::post('/grupos/{id}/permissions/batch', [GruposController::class, 'updateBatchPermissions']);
+    Route::get('/grupos/{id}/check-write-access', [GruposController::class, 'checkWriteAccess']);
     
     // Etiquetas
     Route::get('/tareas/{tareaId}/etiquetas', [EtiquetasController::class, 'index']);
@@ -106,7 +113,6 @@ Route::group([
     Route::put('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}', [ChecklistsController::class, 'updateItem']);
     Route::delete('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}', [ChecklistsController::class, 'destroyItem']);
 
-    
     // Adjuntos de tareas
     Route::get('/tareas/{tareaId}/adjuntos', [TareaAdjuntosController::class, 'index']);
     Route::post('/tareas/{tareaId}/adjuntos', [TareaAdjuntosController::class, 'store']);

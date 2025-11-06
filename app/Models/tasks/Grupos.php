@@ -20,7 +20,8 @@ class Grupos extends Model
         "color",
         "image",
         "user_id",
-        "is_starred"
+        "is_starred",
+        "permission_type"
     ];
 
     protected $casts = [
@@ -60,6 +61,7 @@ class Grupos extends Model
     public function sharedUsers()
     {
         return $this->belongsToMany(User::class, 'grupo_user', 'grupo_id', 'user_id')
+                    ->withPivot('permission_level')
                     ->withTimestamps();
     }
 
@@ -70,5 +72,92 @@ class Grupos extends Model
                      ->orWhereHas('sharedUsers', function($q) use ($userId) {
                          $q->where('users.id', $userId);
                      });
+    }
+
+    // ========================================
+    // MÉTODOS DE PERMISOS
+    // ========================================
+
+    /**
+     * Verificar si un usuario es el propietario del grupo
+     */
+    public function isOwner($userId)
+    {
+        return $this->user_id == $userId;
+    }
+
+    /**
+     * Verificar si un usuario tiene acceso de escritura (puede crear, editar, eliminar)
+     */
+    public function hasWriteAccess($userId)
+    {
+        // El propietario siempre tiene acceso completo
+        if ($this->isOwner($userId)) {
+            return true;
+        }
+
+        // Si el tipo de permiso es 'all', todos tienen acceso completo
+        if ($this->permission_type === 'all') {
+            return true;
+        }
+
+        // Si el tipo de permiso es 'readonly', nadie más tiene acceso de escritura
+        if ($this->permission_type === 'readonly') {
+            return false;
+        }
+
+        // Si es 'custom', verificar el nivel de permiso específico del usuario
+        if ($this->permission_type === 'custom') {
+            $pivot = $this->sharedUsers()->where('users.id', $userId)->first();
+            if ($pivot) {
+                return $pivot->pivot->permission_level === 'write';
+            }
+            return false;
+        }
+
+        return false;
+    }
+
+    /**
+     * Verificar si un usuario tiene al menos acceso de lectura
+     */
+    public function hasReadAccess($userId)
+    {
+        // El propietario siempre tiene acceso
+        if ($this->isOwner($userId)) {
+            return true;
+        }
+
+        // Si está en la lista de usuarios compartidos, tiene al menos lectura
+        return $this->sharedUsers()->where('users.id', $userId)->exists();
+    }
+
+    /**
+     * Obtener el nivel de permiso de un usuario específico
+     */
+    public function getUserPermissionLevel($userId)
+    {
+        // El propietario tiene permisos completos
+        if ($this->isOwner($userId)) {
+            return 'owner';
+        }
+
+        // Si no es un usuario compartido, no tiene acceso
+        $pivot = $this->sharedUsers()->where('users.id', $userId)->first();
+        if (!$pivot) {
+            return 'none';
+        }
+
+        // Retornar según el tipo de permiso del grupo
+        if ($this->permission_type === 'all') {
+            return 'write';
+        }
+
+        if ($this->permission_type === 'readonly') {
+            return 'read';
+        }
+
+        // Si es custom, retornar el nivel específico
+        return $pivot->pivot->permission_level;
     }
 }

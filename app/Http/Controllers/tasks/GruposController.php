@@ -32,16 +32,20 @@ class GruposController extends Controller
                     "id" => $grupo->id,
                     "name" => $grupo->name,
                     "color" => $grupo->color,
-                    "image" => $grupo->image ,
+                    "image" => $grupo->image,
                     "user_id" => $grupo->user_id,
                     "user" => $grupo->user,
                     "is_starred" => $grupo->is_starred,
                     "is_owner" => $grupo->user_id == $userId,
+                    "permission_type" => $grupo->permission_type,
+                    "has_write_access" => $grupo->hasWriteAccess($userId),
+                    "permission_level" => $grupo->getUserPermissionLevel($userId),
                     "shared_with" => $grupo->sharedUsers->map(function($user) {
                         return [
                             'id' => $user->id,
                             'name' => $user->name,
-                            'surname' => $user->surname
+                            'surname' => $user->surname,
+                            'permission_level' => $user->pivot->permission_level
                         ];
                     }),
                     "created_at" => $grupo->created_at->format("Y-m-d h:i A")
@@ -58,8 +62,12 @@ class GruposController extends Controller
                 'name' => 'required|string|max:250|unique:grupos,name,NULL,id,deleted_at,NULL'
             ]);
 
-            // ✅ Crear grupo
-            $request->merge(['user_id' => auth()->id()]);
+            // ✅ Crear grupo con permisos por defecto
+            $request->merge([
+                'user_id' => auth()->id(),
+                'permission_type' => 'all' // Permisos completos por defecto
+            ]);
+            
             $grupo = Grupos::create($request->all());
 
             // ✅ Cargar relaciones necesarias
@@ -73,15 +81,14 @@ class GruposController extends Controller
                 if ($usuario && $usuario->email) {
                     \Illuminate\Support\Facades\Mail::to($usuario->email)
                         ->send(new \App\Mail\GrupoCreadoMail(
-                            $grupo->name,           // Nombre del grupo
-                            trim($usuario->name . ' ' . ($usuario->surname ?? ''))    // ✅ Nombre completo
+                            $grupo->name,
+                            trim($usuario->name . ' ' . ($usuario->surname ?? ''))
                         ));
                     
                     \Illuminate\Support\Facades\Log::info('✅ Correo enviado a: ' . $usuario->email);
                 }
                 
             } catch (\Exception $e) {
-                // Solo logear el error, no detener la ejecución
                 \Illuminate\Support\Facades\Log::warning('⚠️ No se pudo enviar correo: ' . $e->getMessage());
             }
 
@@ -97,6 +104,9 @@ class GruposController extends Controller
                     "user" => $grupo->user,
                     "is_starred" => $grupo->is_starred ?? false,
                     "is_owner" => true,
+                    "permission_type" => $grupo->permission_type,
+                    "has_write_access" => true,
+                    "permission_level" => 'owner',
                     "shared_with" => [],
                     "created_at" => $grupo->created_at->format("Y-m-d h:i A")
                 ],
@@ -134,6 +144,9 @@ class GruposController extends Controller
                 'color' => $grupo->color,
                 'is_starred' => $grupo->is_starred,
                 'user_id' => $grupo->user_id,
+                'permission_type' => $grupo->permission_type,
+                'has_write_access' => $grupo->hasWriteAccess(auth()->id()),
+                'permission_level' => $grupo->getUserPermissionLevel(auth()->id()),
                 'created_at' => $grupo->created_at ? $grupo->created_at->format('Y-m-d h:i A') : null,
                 'sharedUsers' => $grupo->sharedUsers->map(function ($user) {
                     return [
@@ -142,6 +155,7 @@ class GruposController extends Controller
                         'surname' => $user->surname,
                         'email' => $user->email,
                         'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                        'permission_level' => $user->pivot->permission_level
                     ];
                 }),
                 'user' => [
@@ -187,11 +201,15 @@ class GruposController extends Controller
                     "user" => $grupo->user,
                     "is_starred" => $grupo->is_starred,
                     "is_owner" => $grupo->user_id == auth()->id(),
+                    "permission_type" => $grupo->permission_type,
+                    "has_write_access" => $grupo->hasWriteAccess(auth()->id()),
+                    "permission_level" => $grupo->getUserPermissionLevel(auth()->id()),
                     "shared_with" => $grupo->sharedUsers->map(function($user) {
                         return [
                             'id' => $user->id,
                             'name' => $user->name,
-                            'surname' => $user->surname
+                            'surname' => $user->surname,
+                            'permission_level' => $user->pivot->permission_level
                         ];
                     }),
                     "created_at" => $grupo->created_at->format("Y-m-d h:i A")
@@ -291,7 +309,8 @@ class GruposController extends Controller
                         return [
                             'id' => $user->id,
                             'name' => $user->name,
-                            'email' => $user->email
+                            'email' => $user->email,
+                            'permission_level' => $user->pivot->permission_level
                         ];
                     })
                 ]);
@@ -300,8 +319,10 @@ class GruposController extends Controller
             // Obtener los datos de los nuevos usuarios
             $nuevosUsuarios = User::whereIn('id', $nuevosUsuariosIds)->get();
 
-            // Compartir el grupo (agregar usuarios)
-            $grupo->sharedUsers()->syncWithoutDetaching($request->user_ids);
+            // Compartir el grupo (agregar usuarios con permiso 'write' por defecto)
+            foreach ($nuevosUsuariosIds as $userId) {
+                $grupo->sharedUsers()->attach($userId, ['permission_level' => 'write']);
+            }
 
             // ✅ ENVIAR CORREOS ELECTRÓNICOS
             
@@ -359,7 +380,8 @@ class GruposController extends Controller
                     return [
                         'id' => $user->id,
                         'name' => $user->name,
-                        'email' => $user->email
+                        'email' => $user->email,
+                        'permission_level' => $user->pivot->permission_level
                     ];
                 })
             ]);
@@ -460,9 +482,275 @@ class GruposController extends Controller
                     'phone' => $user->phone,
                     'avatar' => $user->avatar 
                         ? env("APP_URL")."/storage/".$user->avatar 
-                        : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
+                        : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                    'permission_level' => $user->pivot->permission_level
                 ];
             })
         ]);
+    }
+
+    // ========================================
+    // 🔒 MÉTODOS DE PERMISOS
+    // ========================================
+
+    /**
+     * Obtener configuración de permisos del grupo
+     * GET /api/grupos/{id}/permissions
+     */
+    public function getPermissions($id)
+    {
+        try {
+            $grupo = Grupos::with('sharedUsers')->findOrFail($id);
+            
+            // Verificar que el usuario autenticado sea el propietario
+            if ($grupo->user_id != auth()->id()) {
+                return response()->json([
+                    "message" => 403,
+                    "message_text" => "Solo el propietario puede ver los permisos"
+                ], 403);
+            }
+
+            // Obtener usuarios compartidos con su nivel de permiso
+            $sharedUsersWithPermissions = $grupo->sharedUsers->map(function($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => trim($user->name . ' ' . ($user->surname ?? '')),
+                    'email' => $user->email,
+                    'avatar' => $user->avatar 
+                        ? env("APP_URL")."/storage/".$user->avatar 
+                        : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                    'permission_level' => $user->pivot->permission_level
+                ];
+            });
+
+            return response()->json([
+                "message" => 200,
+                "permissions" => [
+                    'permission_type' => $grupo->permission_type,
+                    'shared_users' => $sharedUsersWithPermissions
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error al obtener permisos: ' . $e->getMessage());
+            
+            return response()->json([
+                "message" => 500,
+                "message_text" => "Error al obtener permisos"
+            ], 500);
+        }
+    }
+
+    /**
+     * Actualizar tipo de permiso general del grupo
+     * POST /api/grupos/{id}/permissions/type
+     * Body: { permission_type: 'all' | 'readonly' | 'custom' }
+     */
+    public function updatePermissionType(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'permission_type' => 'required|in:all,readonly,custom'
+            ]);
+
+            $grupo = Grupos::findOrFail($id);
+            
+            // Verificar que el usuario autenticado sea el propietario
+            if ($grupo->user_id != auth()->id()) {
+                return response()->json([
+                    "message" => 403,
+                    "message_text" => "Solo el propietario puede cambiar los permisos"
+                ], 403);
+            }
+
+            $oldType = $grupo->permission_type;
+            $grupo->permission_type = $request->permission_type;
+            $grupo->save();
+
+            \Illuminate\Support\Facades\Log::info('Tipo de permiso actualizado', [
+                'grupo_id' => $grupo->id,
+                'old_type' => $oldType,
+                'new_type' => $grupo->permission_type,
+                'user_id' => auth()->id()
+            ]);
+
+            return response()->json([
+                "message" => 200,
+                "message_text" => "Permisos actualizados correctamente",
+                "permission_type" => $grupo->permission_type
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 422,
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error al actualizar tipo de permiso: ' . $e->getMessage());
+            
+            return response()->json([
+                "message" => 500,
+                "message_text" => "Error al actualizar permisos"
+            ], 500);
+        }
+    }
+
+    /**
+     * Actualizar nivel de permiso de un usuario específico
+     * POST /api/grupos/{grupoId}/permissions/user/{userId}
+     * Body: { permission_level: 'read' | 'write' }
+     */
+    public function updateUserPermission(Request $request, $grupoId, $userId)
+    {
+        try {
+            $request->validate([
+                'permission_level' => 'required|in:read,write'
+            ]);
+
+            $grupo = Grupos::findOrFail($grupoId);
+            
+            // Verificar que el usuario autenticado sea el propietario
+            if ($grupo->user_id != auth()->id()) {
+                return response()->json([
+                    "message" => 403,
+                    "message_text" => "Solo el propietario puede cambiar permisos de usuarios"
+                ], 403);
+            }
+
+            // Verificar que el usuario esté compartido en el grupo
+            if (!$grupo->sharedUsers()->where('user_id', $userId)->exists()) {
+                return response()->json([
+                    "message" => 404,
+                    "message_text" => "El usuario no tiene acceso a este grupo"
+                ], 404);
+            }
+
+            // Actualizar el nivel de permiso en la tabla pivote
+            $grupo->sharedUsers()->updateExistingPivot($userId, [
+                'permission_level' => $request->permission_level
+            ]);
+
+            \Illuminate\Support\Facades\Log::info('Permiso de usuario actualizado', [
+                'grupo_id' => $grupoId,
+                'user_id' => $userId,
+                'permission_level' => $request->permission_level,
+                'updated_by' => auth()->id()
+            ]);
+
+            return response()->json([
+                "message" => 200,
+                "message_text" => "Permiso actualizado correctamente",
+                "permission_level" => $request->permission_level
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 422,
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error al actualizar permiso de usuario: ' . $e->getMessage());
+            
+            return response()->json([
+                "message" => 500,
+                "message_text" => "Error al actualizar permiso"
+            ], 500);
+        }
+    }
+
+    /**
+     * Verificar si el usuario autenticado tiene permisos de escritura en el grupo
+     * GET /api/grupos/{id}/check-write-access
+     */
+    public function checkWriteAccess($id)
+    {
+        try {
+            $grupo = Grupos::findOrFail($id);
+            $userId = auth()->id();
+            
+            $hasWriteAccess = $grupo->hasWriteAccess($userId);
+            $permissionLevel = $grupo->getUserPermissionLevel($userId);
+            $isOwner = $grupo->isOwner($userId);
+
+            return response()->json([
+                "message" => 200,
+                "has_write_access" => $hasWriteAccess,
+                "permission_level" => $permissionLevel,
+                "is_owner" => $isOwner,
+                "permission_type" => $grupo->permission_type
+            ]);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error al verificar permisos: ' . $e->getMessage());
+            
+            return response()->json([
+                "message" => 500,
+                "message_text" => "Error al verificar permisos"
+            ], 500);
+        }
+    }
+
+    /**
+     * Actualizar permisos de múltiples usuarios a la vez
+     * POST /api/grupos/{id}/permissions/batch
+     * Body: { users: [{ user_id: 1, permission_level: 'read' }, ...] }
+     */
+    public function updateBatchPermissions(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'users' => 'required|array',
+                'users.*.user_id' => 'required|exists:users,id',
+                'users.*.permission_level' => 'required|in:read,write'
+            ]);
+
+            $grupo = Grupos::findOrFail($id);
+            
+            // Verificar que el usuario autenticado sea el propietario
+            if ($grupo->user_id != auth()->id()) {
+                return response()->json([
+                    "message" => 403,
+                    "message_text" => "Solo el propietario puede cambiar permisos"
+                ], 403);
+            }
+
+            $updated = 0;
+            foreach ($request->users as $userData) {
+                if ($grupo->sharedUsers()->where('user_id', $userData['user_id'])->exists()) {
+                    $grupo->sharedUsers()->updateExistingPivot($userData['user_id'], [
+                        'permission_level' => $userData['permission_level']
+                    ]);
+                    $updated++;
+                }
+            }
+
+            \Illuminate\Support\Facades\Log::info('Permisos actualizados en lote', [
+                'grupo_id' => $id,
+                'users_updated' => $updated,
+                'updated_by' => auth()->id()
+            ]);
+
+            return response()->json([
+                "message" => 200,
+                "message_text" => "Permisos actualizados correctamente",
+                "users_updated" => $updated
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 422,
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error al actualizar permisos en lote: ' . $e->getMessage());
+            
+            return response()->json([
+                "message" => 500,
+                "message_text" => "Error al actualizar permisos"
+            ], 500);
+        }
     }
 }

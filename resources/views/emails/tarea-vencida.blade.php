@@ -13,7 +13,7 @@
         }
     </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f5f5f5;">
+<body style="margin: 0; padding: 0; background: rgb(228, 228, 228);">
     
     <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
         <tr>

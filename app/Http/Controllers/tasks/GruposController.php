@@ -510,15 +510,16 @@ class GruposController extends Controller
                 ], 403);
             }
 
-            // Obtener usuarios compartidos con su nivel de permiso
+            // ✅ CORRECCIÓN: Cambiar 'shared_users' a 'users' y separar name/surname
             $sharedUsersWithPermissions = $grupo->sharedUsers->map(function($user) {
                 return [
                     'id' => $user->id,
-                    'name' => trim($user->name . ' ' . ($user->surname ?? '')),
+                    'name' => $user->name,           // ✅ Separado
+                    'surname' => $user->surname,     // ✅ Separado
                     'email' => $user->email,
                     'avatar' => $user->avatar 
                         ? env("APP_URL")."/storage/".$user->avatar 
-                        : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                        : null,  // ✅ Usar null en vez de imagen placeholder
                     'permission_level' => $user->pivot->permission_level
                 ];
             });
@@ -527,7 +528,7 @@ class GruposController extends Controller
                 "message" => 200,
                 "permissions" => [
                     'permission_type' => $grupo->permission_type,
-                    'shared_users' => $sharedUsersWithPermissions
+                    'users' => $sharedUsersWithPermissions  // ✅ Cambiar a 'users'
                 ]
             ]);
 

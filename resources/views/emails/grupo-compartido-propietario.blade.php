@@ -2,151 +2,123 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grupo Compartido</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #f5f5f5;
-        }
-    </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f5f5f5;">
-    
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
-        <tr>
-            <td align="center">
-                
-                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
-                    
-                    <!-- Header -->
+<body style="margin:0; padding:0; background: rgb(228, 228, 228); font-family: Arial, Helvetica, sans-serif;">
+
+<div style="width:100%; padding:40px 0;">
+
+    <div style="width:90%; max-width:700px; margin:auto; background:#ffffff; border-radius:18px; padding:0; overflow:hidden; box-shadow:0 15px 45px rgba(0,0,0,0.18);">
+
+        <!-- HEADER GRADIENT -->
+        <div style="text-align:center; padding:50px 20px; background: linear-gradient(135deg, #667eea, #764ba2);">
+            <img src="https://img.icons8.com/ios/80/ffffff/share.png" style="width:80px; filter:drop-shadow(0 3px 5px rgba(0,0,0,.25));">
+            <div style="font-size:30px; font-weight:bold; color:white; margin-top:14px; letter-spacing:0.5px;">
+                Grupo Compartido
+            </div>
+            <div style="color:#e8e7ff; font-size:15px; margin-top:6px;">
+                Confirmación de compartir grupo
+            </div>
+        </div>
+
+        <div style="padding:35px 35px 10px 35px;">
+
+            <!-- GREETING -->
+            <div style="font-size:16px; color:#1e293b; line-height:1.6; margin-bottom:25px;">
+                Hola <strong style="color:#667eea;">{{ $nombrePropietario }}</strong>,<br><br>
+                Has compartido exitosamente el grupo <strong style="color:#667eea;">{{ $nombreGrupo }}</strong> con 
+                @if($cantidadUsuarios === 1)
+                    el siguiente colaborador:
+                @else
+                    los siguientes {{ $cantidadUsuarios }} colaboradores:
+                @endif
+            </div>
+
+            <!-- SECTION HEADER -->
+            <div style="font-size:18px; font-weight:bold; color:#1e293b; display:flex; align-items:center; margin-bottom:12px;">
+                <img src="https://img.icons8.com/?size=30&id=101316&format.png" style="width:26px; margin-right:10px;">
+                Nuevos Miembros
+            </div>
+
+            <!-- USERS LIST -->
+            @foreach($usuariosCompartidos as $usuario)
+            <div style="background:#f8f9fa; border-radius:12px; padding:18px; margin-bottom:12px; border-left:4px solid #667eea;">
+                <table cellpadding="0" cellspacing="0" width="100%">
                     <tr>
-                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-                            <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; text-shadow: 0 2px 10px rgba(0,0,0,0.2);">
-                                📤 Grupo Compartido
-                            </h1>
-                            <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px;">
-                                Confirmación de compartir grupo
-                            </p>
+                        <td style="width:40px; vertical-align:middle;">
+                            <img src="https://img.icons8.com/ios/48/667eea/user.png" style="width:32px;">
+                        </td>
+                        <td style="vertical-align:middle; padding-left:12px;">
+                            <div style="color:#1e293b; font-size:15px; font-weight:600; margin-bottom:4px;">
+                                {{ $usuario['name'] }}
+                            </div>
+                            <div style="color:#718096; font-size:13px;">
+                                {{ $usuario['email'] }}
+                            </div>
                         </td>
                     </tr>
-                    
-                    <!-- Body -->
-                    <tr>
-                        <td style="padding: 40px 30px;">
-                            
-                            <!-- Saludo personalizado -->
-                            <table width="100%" cellpadding="0" cellspacing="0">
-                                <tr>
-                                    <td>
-                                        <p style="font-size: 18px; color: #333333; margin: 0 0 10px 0; font-weight: 600;">
-                                            ¡Hola {{ $nombrePropietario }}! 👋
-                                        </p>
-                                        <p style="font-size: 16px; color: #555555; margin: 0 0 30px 0; line-height: 1.6;">
-                                            Vemos que acabas de compartir el grupo <strong style="color: #667eea;">{{ $nombreGrupo }}</strong> con 
-                                            @if($cantidadUsuarios === 1)
-                                                la siguiente persona:
-                                            @else
-                                                las siguientes {{ $cantidadUsuarios }} personas:
-                                            @endif
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <!-- Lista de usuarios compartidos -->
-                            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8f9fa; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #667eea;">
-                                <tr>
-                                    <td style="padding: 20px;">
-                                        <p style="margin: 0 0 15px 0; color: #888888; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600;">
-                                            👥 Usuarios agregados:
-                                        </p>
-                                        
-                                        @foreach($usuariosCompartidos as $usuario)
-                                        <div style="background-color: #ffffff; border-radius: 6px; padding: 12px 15px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                                            <p style="margin: 0; color: #333333; font-size: 15px; font-weight: 600;">
-                                                 {{ $usuario['name'] }}
-                                            </p>
-                                            <p style="margin: 5px 0 0 0; color: #666666; font-size: 13px;">
-                                                 {{ $usuario['email'] }}
-                                            </p>
-                                        </div>
-                                        @endforeach
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <!-- Mensaje informativo -->
-                            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #e7f3ff; border-radius: 8px; border-left: 4px solid #0066cc; margin-bottom: 30px;">
-                                <tr>
-                                    <td style="padding: 20px;">
-                                        <p style="margin: 0; color: #004085; font-size: 14px; line-height: 1.6;">
-                                            <strong>📌 Importante:</strong> 
-                                            @if($cantidadUsuarios === 1)
-                                                Esta persona ahora puede ver y trabajar en las listas y tareas de este grupo.
-                                            @else
-                                                Estas {{ $cantidadUsuarios }} personas ahora pueden ver y trabajar en las listas y tareas de este grupo.
-                                            @endif
-                                            Podrán colaborar contigo en tiempo real.
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <!-- Botón de acción -->
-                            <table width="100%" cellpadding="0" cellspacing="0">
-                                <tr>
-                                    <td align="center" style="padding: 20px 0;">
-                                        <a href="{{ env('APP_URL') }}/tasks/grupos/list" 
-                                           style="display: inline-block; background: linear-gradient(45deg, rgb(44, 154, 233), rgb(207, 56, 227)); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s ease;">
-                                            📋 Ver Mi Grupo
-                                        </a>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <!-- Alerta de seguridad -->
-                            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107; margin-top: 30px;">
-                                <tr>
-                                    <td style="padding: 20px;">
-                                        <p style="margin: 0; color: #856404; font-size: 13px; line-height: 1.6;">
-                                            <strong>🔒 Seguridad:</strong> Si usted no realizó esta acción, le solicitamos comunicarse con el administrador del sistema a la brevedad.
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                        </td>
-                    </tr>
-                    
-                    <!-- Footer -->
-                    <tr>
-                        <td style="background-color: #f8f9fa; padding: 30px; border-top: 1px solid #e0e0e0;">
-                            
-                            <p style="margin: 0 0 15px 0; color: #666666; font-size: 14px; text-align: center;">
-                                Saludos cordiales,<br>
-                                <strong>Equipo de Baby Ballet Marbet®</strong>
-                            </p>
-                            
-                            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
-                            
-                            <p style="margin: 0; color: #999999; font-size: 12px; text-align: center; line-height: 1.8;">
-                                Este es un correo automático generado por el sistema.<br>
-                                Por favor, no respondas a este mensaje.<br>
-                                <br>
-                                © {{ date('Y') }} International Dancing Corporation S.A. de S.V. Todos los derechos reservados.
-                            </p>
-                            
-                        </td>
-                    </tr>
-                    
                 </table>
-                
-            </td>
-        </tr>
-    </table>
-    
+            </div>
+            @endforeach
+
+            <!-- INFO BOX -->
+            <div style="background:#dbeafe; border-radius:12px; padding:20px; margin-top:25px; margin-bottom:25px; border-left:4px solid #3b82f6;">
+                <table cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="vertical-align:top; width:32px;">
+                            <img src="https://img.icons8.com/ios/48/1e40af/info.png" style="width:24px;">
+                        </td>
+                        <td style="vertical-align:top; padding-left:12px;">
+                            <div style="color:#1e3a8a; font-size:14px; line-height:1.6;">
+                                <strong>Importante:</strong>
+                                @if($cantidadUsuarios === 1)
+                                    Este usuario ahora puede ver y trabajar en las listas y tareas de tu grupo.
+                                @else
+                                    Estos {{ $cantidadUsuarios }} usuarios ahora pueden ver y trabajar en las listas y tareas de tu grupo.
+                                @endif
+                                Podrán colaborar contigo en tiempo real.
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- BUTTON CTA -->
+            <div style="text-align:center; margin-top:10px; margin-bottom:40px;">
+                <a href="{{ env('APP_URL') }}/tasks/grupos/list" 
+                   style="background: linear-gradient(135deg, #667eea, #764ba2); padding:14px 32px; border-radius:8px; color:white; font-weight:bold; text-decoration:none; box-shadow:0 4px 12px rgba(102,126,234,0.6); display:inline-block;">
+                    <img src="https://img.icons8.com/material-rounded/96/ffffff/login-rounded-right.png" style="width:18px; vertical-align:middle; margin-right:8px;">
+                    Ver Mi Grupo
+                </a>
+            </div>
+
+            <!-- SECURITY WARNING -->
+            <div style="background:#fffbeb; border-radius:12px; padding:20px; border-left:4px solid #f59e0b;">
+                <table cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="vertical-align:top; width:32px;">
+                            <img src="https://img.icons8.com/ios/48/d97706/lock.png" style="width:24px;">
+                        </td>
+                        <td style="vertical-align:top; padding-left:12px;">
+                            <div style="color:#78350f; font-size:13px; line-height:1.6;">
+                                <strong>Seguridad:</strong> Si no realizaste esta acción, comunícate con el administrador del sistema.
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+        </div>
+
+        <!-- FOOTER -->
+        <div style="text-align:center; padding:25px; background:#f6f6fb; font-size:13px; color:#5f6575;">
+            Saludos cordiales,<br>
+            <strong style="color:#667eea;">Equipo de Baby Ballet Marbet®</strong><br><br>
+            © {{ date('Y') }} International Dancing Corporation S.A. de C.V.
+        </div>
+
+    </div>
+
+</div>
+
 </body>
 </html>

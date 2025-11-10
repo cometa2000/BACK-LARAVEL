@@ -2,202 +2,160 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tarea Completada</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #f5f5f5;
-        }
-    </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f5f5f5;">
-    
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 0;">
-        <tr>
-            <td align="center">
-                
-                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
-                    
-                    <!-- Header -->
+<body style="margin:0; padding:0; background:#eceffc; font-family: Arial, Helvetica, sans-serif;">
+
+<div style="width:100%; padding:40px 0;">
+
+    <div style="width:90%; max-width:700px; margin:auto; background:#ffffff; border-radius:18px; padding:0; overflow:hidden; box-shadow:0 15px 45px rgba(0,0,0,0.18);">
+
+        <!-- HEADER GRADIENT -->
+        <div style="text-align:center; padding:50px 20px; background: linear-gradient(135deg, #10b981, #059669);">
+            <img src="https://img.icons8.com/ios/80/ffffff/checkmark.png" style="width:80px; filter:drop-shadow(0 3px 5px rgba(0,0,0,.25));">
+            <div style="font-size:30px; font-weight:bold; color:white; margin-top:14px; letter-spacing:0.5px;">
+                ¡Tarea Completada!
+            </div>
+            <div style="color:#d1fae5; font-size:15px; margin-top:6px;">
+                Una tarea ha sido marcada como completada
+            </div>
+        </div>
+
+        <div style="padding:35px 35px 10px 35px;">
+
+            <!-- GREETING -->
+            <div style="font-size:16px; color:#1e293b; line-height:1.6; margin-bottom:25px;">
+                Hola <strong style="color:#10b981;">{{ $nombreUsuario }}</strong>,<br><br>
+                @if($esCreador)
+                    <strong style="color:#10b981;">{{ $nombreCompletador }}</strong> ha completado la tarea que creaste.
+                @else
+                    <strong style="color:#10b981;">{{ $nombreCompletador }}</strong> ha completado una tarea en la que estás asignado.
+                @endif
+            </div>
+
+            <!-- SUCCESS BANNER -->
+            {{-- <div style="background:linear-gradient(135deg, #d1fae5, #a7f3d0); border-radius:14px; padding:28px; margin-bottom:25px; text-align:center; border:2px solid #6ee7b7;">
+                <img src="https://img.icons8.com/ios/64/059669/confetti.png" style="width:48px; margin-bottom:10px;">
+                <div style="color:#065f46; font-size:18px; font-weight:700;">
+                    ¡Excelente trabajo en equipo!
+                </div>
+            </div> --}}
+
+            <!-- TASK INFO -->
+            <div style="font-size:18px; font-weight:bold; color:#1e293b; display:flex; align-items:center; margin-bottom:8px;">
+                <img src="https://img.icons8.com/ios/48/10b981/note.png" style="width:26px; margin-right:10px;">
+                Tarea Completada
+            </div>
+            <div style="background:#f0fdf4; border-radius:12px; padding:20px; border:1px solid #bbf7d0; margin-bottom:22px;">
+                <div style="color:#1e293b; font-size:20px; font-weight:700; margin-bottom:15px;">
+                    {{ $tarea->name }}
+                </div>
+                @if($tarea->description)
+                <div style="color:#4a5568; font-size:14px; line-height:1.6; margin-bottom:15px;">
+                    <strong>Descripción:</strong><br>
+                    {{ $tarea->description }}
+                </div>
+                @endif
+
+                <!-- DETAILS -->
+                <div style="background:#ffffff; border-radius:10px; padding:15px; margin-bottom:15px; border:1px solid #dcfce7;">
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                            <td style="width:48%; padding-right:2%; border-right:1px solid #dcfce7;">
+                                <div style="color:#718096; font-size:12px; margin-bottom:4px;">
+                                    <img src="https://img.icons8.com/ios/48/10b981/folder-invoices.png" style="width:16px; vertical-align:middle; margin-right:6px;">
+                                    Grupo
+                                </div>
+                                <div style="color:#1e293b; font-size:14px; font-weight:600;">{{ $grupo->name }}</div>
+                            </td>
+                            <td style="width:48%; padding-left:2%;">
+                                <div style="color:#718096; font-size:12px; margin-bottom:4px;">
+                                    <img src="https://img.icons8.com/ios/48/10b981/bulleted-list.png" style="width:16px; vertical-align:middle; margin-right:6px;">
+                                    Lista
+                                </div>
+                                <div style="color:#1e293b; font-size:14px; font-weight:600;">{{ $lista->name }}</div>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- STATUS BADGE -->
+                <div style="background:linear-gradient(135deg, #10b981, #059669); border-radius:10px; padding:12px; text-align:center;">
+                    <img src="https://img.icons8.com/ios/80/ffffff/checkmark.png" style="width:22px; vertical-align:middle; margin-right:8px;">
+                    <span style="color:#ffffff; font-size:16px; font-weight:700; vertical-align:middle;">COMPLETADA</span>
+                </div>
+
+                <!-- COMPLETED BY -->
+                <div style="margin-top:15px; padding-top:15px; border-top:1px solid #dcfce7;">
+                    <table cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                            <td>
+                                <img src="https://img.icons8.com/ios/48/10b981/user.png" style="width:18px; vertical-align:middle; margin-right:8px;">
+                                <span style="color:#4a5568; font-size:13px; vertical-align:middle;">
+                                    Completada por <strong style="color:#1e293b;">{{ $nombreCompletador }}</strong>
+                                </span>
+                            </td>
+                            <td style="text-align:right;">
+                                <span style="color:#718096; font-size:12px;">{{ now()->format('d/m/Y H:i') }}</span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- INFO BOX -->
+            @if($esCreador)
+            <div style="background:#dbeafe; border-radius:12px; padding:20px; margin-bottom:25px; border-left:4px solid #3b82f6;">
+                <table cellpadding="0" cellspacing="0">
                     <tr>
-                        <td style="background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); padding: 40px 30px; text-align: center;">
-                            <!-- Icono de checkmark -->
-                            <div style="background-color: rgba(255,255,255,0.2); border-radius: 50%; width: 80px; height: 80px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
-                                <div style="font-size: 50px; color: white;">✓</div>
+                        <td style="vertical-align:top; width:32px;">
+                            <img src="https://img.icons8.com/ios/48/1e40af/info.png" style="width:24px;">
+                        </td>
+                        <td style="vertical-align:top; padding-left:12px;">
+                            <div style="color:#1e3a8a; font-size:14px; line-height:1.6;">
+                                <strong>Nota:</strong> Como creador de esta tarea, puedes revisar el trabajo completado y verificar que todo esté en orden.
                             </div>
-                            
-                            <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; text-shadow: 0 2px 10px rgba(0,0,0,0.2);">
-                                ✅ ¡Tarea Completada!
-                            </h1>
-                            <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px;">
-                                Una tarea ha sido marcada como completada
-                            </p>
                         </td>
                     </tr>
-                    
-                    <!-- Body -->
-                    <tr>
-                        <td style="padding: 40px 30px;">
-                            
-                            <!-- Saludo personalizado -->
-                            <table width="100%" cellpadding="0" cellspacing="0">
-                                <tr>
-                                    <td>
-                                        <p style="font-size: 18px; color: #333333; margin: 0 0 10px 0; font-weight: 600;">
-                                            ¡Hola {{ $nombreUsuario }}! 👋
-                                        </p>
-                                        <p style="font-size: 16px; color: #555555; margin: 0 0 30px 0; line-height: 1.6;">
-                                            @if($esCreador)
-                                                Te notificamos que <strong style="color: #2e7d32;">{{ $nombreCompletador }}</strong> ha completado la tarea que creaste.
-                                            @else
-                                                Te notificamos que <strong style="color: #2e7d32;">{{ $nombreCompletador }}</strong> ha completado una tarea en la que estás asignado.
-                                            @endif
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <!-- Card de la tarea completada -->
-                            <table width="100%" cellpadding="0" cellspacing="0" style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-radius: 10px; border-left: 5px solid #4caf50; margin-bottom: 30px;">
-                                <tr>
-                                    <td style="padding: 25px;">
-                                        
-                                        <h2 style="margin: 0 0 15px 0; color: #1b5e20; font-size: 24px; font-weight: 700;">
-                                            📋 {{ $tarea->name }}
-                                        </h2>
-                                        
-                                        @if($tarea->description)
-                                        <p style="margin: 0 0 15px 0; color: #666666; font-size: 14px; line-height: 1.6;">
-                                            <strong>Descripción:</strong><br>
-                                            {{ $tarea->description }}
-                                        </p>
-                                        @endif
-                                        
-                                        <!-- Información del grupo y lista -->
-                                        <div style="background-color: #ffffff; border-radius: 6px; padding: 15px; margin-bottom: 15px;">
-                                            <p style="margin: 0 0 8px 0; color: #333333; font-size: 14px;">
-                                                <strong>📁 Grupo:</strong> {{ $grupo->name }}
-                                            </p>
-                                            <p style="margin: 0; color: #333333; font-size: 14px;">
-                                                <strong>📑 Lista:</strong> {{ $lista->name }}
-                                            </p>
-                                        </div>
-                                        
-                                        <!-- Badge de completado -->
-                                        <div style="background-color: rgba(76, 175, 80, 0.15); border-radius: 6px; padding: 15px; text-align: center;">
-                                            <p style="margin: 0; color: #1b5e20; font-size: 16px; font-weight: 700;">
-                                                ✅ Estado: COMPLETADA
-                                            </p>
-                                        </div>
-                                        
-                                        <!-- Información de quien completó -->
-                                        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(0,0,0,0.1);">
-                                            <p style="margin: 0; color: #666666; font-size: 13px;">
-                                                <strong>👤 Completada por:</strong> {{ $nombreCompletador }}
-                                            </p>
-                                            <p style="margin: 5px 0 0 0; color: #999999; font-size: 12px;">
-                                                {{ now()->format('d/m/Y H:i') }}
-                                            </p>
-                                        </div>
-                                        
-                                        @if($tarea->priority)
-                                        <p style="margin: 15px 0 0 0; color: #666666; font-size: 13px;">
-                                            <strong>Prioridad original:</strong> 
-                                            <span style="
-                                                padding: 4px 8px; 
-                                                border-radius: 4px; 
-                                                background-color: {{ $tarea->priority == 'high' ? '#f44336' : ($tarea->priority == 'medium' ? '#ff9800' : '#4caf50') }}; 
-                                                color: white;
-                                                font-weight: 600;
-                                            ">
-                                                {{ $tarea->priority == 'high' ? 'Alta' : ($tarea->priority == 'medium' ? 'Media' : 'Baja') }}
-                                            </span>
-                                        </p>
-                                        @endif
-                                        
-                                        @if($tarea->due_date)
-                                        <p style="margin: 10px 0 0 0; color: #666666; font-size: 13px;">
-                                            <strong>📅 Fecha límite:</strong> {{ \Carbon\Carbon::parse($tarea->due_date)->format('d/m/Y H:i') }}
-                                        </p>
-                                        @endif
-                                        
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <!-- Mensaje de felicitación -->
-                            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3; margin-bottom: 30px;">
-                                <tr>
-                                    <td style="padding: 20px;">
-                                        <p style="margin: 0; color: #1565c0; font-size: 14px; line-height: 1.6;">
-                                            <strong>🎉 ¡Excelente trabajo!</strong> 
-                                            @if($esCreador)
-                                                Tu tarea ha sido completada exitosamente. Puedes revisarla haciendo clic en el botón de abajo.
-                                            @else
-                                                Esta tarea ha sido completada. Puedes revisar los detalles haciendo clic en el botón de abajo.
-                                            @endif
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <!-- Botón de acción -->
-                            <table width="100%" cellpadding="0" cellspacing="0">
-                                <tr>
-                                    <td align="center" style="padding: 20px 0;">
-                                        <a href="{{ $urlTarea }}" 
-                                           style="display: inline-block; background: linear-gradient(45deg, #4caf50, #2e7d32); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4); transition: all 0.3s ease;">
-                                            📋 Ver Detalles de la Tarea
-                                        </a>
-                                    </td>
-                                </tr>
-                            </table>
-                            
-                            <!-- Información adicional -->
-                            @if($esCreador)
-                            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fff3e0; border-radius: 8px; border-left: 4px solid #ff9800; margin-top: 30px;">
-                                <tr>
-                                    <td style="padding: 20px;">
-                                        <p style="margin: 0; color: #e65100; font-size: 13px; line-height: 1.6;">
-                                            <strong>📊 Nota:</strong> Como creador de esta tarea, puedes revisar el trabajo completado y verificar que todo esté en orden.
-                                        </p>
-                                    </td>
-                                </tr>
-                            </table>
-                            @endif
-                            
-                        </td>
-                    </tr>
-                    
-                    <!-- Footer -->
-                    <tr>
-                        <td style="background-color: #f8f9fa; padding: 30px; border-top: 1px solid #e0e0e0;">
-                            
-                            <p style="margin: 0 0 15px 0; color: #666666; font-size: 14px; text-align: center;">
-                                Saludos cordiales,<br>
-                                <strong>Equipo de Baby Ballet Marbet®</strong>
-                            </p>
-                            
-                            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 20px 0;">
-                            
-                            <p style="margin: 0; color: #999999; font-size: 12px; text-align: center; line-height: 1.8;">
-                                Este es un correo automático de notificación de tarea completada.<br>
-                                Por favor, no respondas a este mensaje.<br>
-                                <br>
-                                © {{ date('Y') }} International Dancing Corporation S.A. de S.V. Todos los derechos reservados.
-                            </p>
-                            
-                        </td>
-                    </tr>
-                    
                 </table>
-                
-            </td>
-        </tr>
-    </table>
-    
+            </div>
+            @else
+            <div style="background:#dbeafe; border-radius:12px; padding:20px; margin-bottom:25px; border-left:4px solid #3b82f6;">
+                <table cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td style="vertical-align:top; width:32px;">
+                            <img src="https://img.icons8.com/ios/48/1e40af/thumb-up.png" style="width:24px;">
+                        </td>
+                        <td style="vertical-align:top; padding-left:12px;">
+                            <div style="color:#1e3a8a; font-size:14px; line-height:1.6;">
+                                <strong>¡Bien hecho!</strong> Esta tarea ha sido completada exitosamente. El equipo avanza según lo planeado.
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            @endif
+
+            <!-- BUTTON CTA -->
+            <div style="text-align:center; margin-top:10px; margin-bottom:50px;">
+                <a href="{{ $urlTarea }}" 
+                   style="background: linear-gradient(135deg, #10b981, #059669); padding:14px 28px; border-radius:8px; color:white; font-weight:bold; text-decoration:none; box-shadow:0 4px 12px rgba(16,185,129,0.6); display:inline-block;">
+                    <img src="https://img.icons8.com/ios/48/ffffff/visible.png" style="width:18px; vertical-align:middle; margin-right:8px;">
+                    Ver Detalles
+                </a>
+            </div>
+
+        </div>
+
+        <!-- FOOTER -->
+        <div style="text-align:center; padding:25px; background:#f6f6fb; font-size:13px; color:#5f6575;">
+            Saludos cordiales,<br>
+            <strong style="color:#10b981;">Equipo de Baby Ballet Marbet®</strong><br><br>
+            © {{ date('Y') }} International Dancing Corporation S.A. de C.V.
+        </div>
+
+    </div>
+
+</div>
+
 </body>
 </html>

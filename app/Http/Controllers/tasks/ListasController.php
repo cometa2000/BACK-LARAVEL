@@ -22,7 +22,8 @@ class ListasController extends Controller
                 'tareas.adjuntos',
                 'tareas.checklists.items',
                 'tareas.user',
-                'tareas.comentarios'
+                'tareas.comentarios',
+                'tareas.assignedUsers'  // 🆕 AGREGADO: Cargar miembros asignados
             ]);
             
             if ($grupo_id) {
@@ -70,6 +71,24 @@ class ListasController extends Controller
                             'enlaces' => $enlaces,
                             'archivos' => $archivos
                         ];
+                        
+                        // 🆕 AGREGADO: Formatear miembros asignados
+                        if (isset($tarea['assigned_users']) && is_array($tarea['assigned_users'])) {
+                            $tarea['assigned_members'] = array_map(function($user) {
+                                return [
+                                    'id' => $user['id'],
+                                    'name' => $user['name'],
+                                    'surname' => $user['surname'] ?? '',
+                                    'email' => $user['email'],
+                                    'avatar' => isset($user['avatar']) && $user['avatar'] 
+                                        ? url('storage/' . $user['avatar']) 
+                                        : null,
+                                ];
+                            }, $tarea['assigned_users']);
+                            unset($tarea['assigned_users']); // Eliminar el campo original
+                        } else {
+                            $tarea['assigned_members'] = [];
+                        }
                         
                         // Agregar contador de comentarios
                         $tarea['comentarios_count'] = isset($tarea['comentarios']) 

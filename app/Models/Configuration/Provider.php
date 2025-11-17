@@ -7,15 +7,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class SucursaleDeliverie extends Model
+class Provider extends Model
 {
     use HasFactory;
     use SoftDeletes;
     protected $fillable = [
-        "name",
+        "full_name",
+        "ruc",
+        "email",
+        "phone",
         "address",
+        "imagen",
         "state",
-        "color",
     ];
 
     public function setCreatedAtAttribute($value) {

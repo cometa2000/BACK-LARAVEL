@@ -73,7 +73,7 @@
             </div>
             @endif
 
-            @if($tarea->priority)
+            {{-- @if($tarea->priority)
             <!-- PRIORIDAD -->
             <div style="font-size:18px; font-weight:bold; color:#1e293b; display:flex; align-items:center; margin-bottom:8px;">
                 <img src="https://img.icons8.com/ios/48/f59e0b/flag.png" style="width:26px; margin-right:10px;">
@@ -82,7 +82,7 @@
             <div style="background:#fef3c7; border-radius:12px; padding:20px; border:1px solid #fde68a; margin-bottom:30px; line-height:1.6;">
                 {{ $tarea->priority == 'high' ? 'Alta' : ($tarea->priority == 'medium' ? 'Media' : 'Baja') }}
             </div>
-            @endif
+            @endif --}}
 
             <!-- REMINDER BOX -->
             <div style="background:#fef3c7; border-radius:12px; padding:20px; margin-bottom:25px; border-left:4px solid #f59e0b;">

@@ -7,15 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class SucursaleDeliverie extends Model
+class UnitTransform extends Model
 {
     use HasFactory;
     use SoftDeletes;
     protected $fillable = [
-        "name",
-        "address",
-        "state",
-        "color",
+        "unit_id",
+        "unit_to_id",
     ];
 
     public function setCreatedAtAttribute($value) {
@@ -25,5 +23,9 @@ class SucursaleDeliverie extends Model
     public function setUpdatedAtAttribute($value) {
         date_default_timezone_set("America/Lima");
         $this->attributes["updated_at"] = Carbon::now();
+    }
+
+    public function unit_to(){
+        return $this->belongsTo(Unit::class,"unit_to_id");
     }
 }

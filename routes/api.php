@@ -3,7 +3,10 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\ActividadController;
 use App\Http\Controllers\UserAccessController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\tasks\GruposController;
 use App\Http\Controllers\tasks\ListasController;
 use App\Http\Controllers\tasks\TareasController;
@@ -83,8 +86,24 @@ Route::group([
     Route::get('/grupos/{id}/shared-users', [GruposController::class, 'getSharedUsers']);
     Route::resource("grupos", GruposController::class);
 
-    Route::get("documentos/config",[DocumentosController::class, 'config']);
-    Route::resource("documentos",DocumentosController::class);
+    // ========== RUTAS PARA DOCUMENTOS ==========
+    // Route::get("documentos/config",[DocumentosController::class, 'config']);
+    // Route::resource("documentos",DocumentosController::class);
+    Route::get('/documentos', [DocumentosController::class, 'index']);
+    Route::post('/documentos', [DocumentosController::class, 'store']);
+    Route::get('/documentos/config', [DocumentosController::class, 'config']);
+    Route::put('/documentos/{id}', [DocumentosController::class, 'update']);
+    Route::delete('/documentos/{id}', [DocumentosController::class, 'destroy']);
+
+    // ========== RUTAS PARA CARPETAS ==========
+    Route::get('/documentos/tree', [DocumentosController::class, 'getTree']);
+    Route::post('/documentos/folder', [DocumentosController::class, 'createFolder']);
+    Route::get('/documentos/folder/{id}', [DocumentosController::class, 'getFolderContents']);
+    Route::post('/documentos/{id}/move', [DocumentosController::class, 'move']);
+
+    // ========== NUEVAS RUTAS PARA DESCARGA Y VISUALIZACIÓN ==========
+    Route::get('/documentos/{id}/download', [DocumentosController::class, 'download']);
+    Route::get('/documentos/{id}/info', [DocumentosController::class, 'getDocumentInfo']);
 
     Route::post('listas/reorder', [ListasController::class, 'reorder']);
     Route::apiResource('listas',ListasController::class);
@@ -123,4 +142,26 @@ Route::group([
     Route::get('/tareas/{tarea}/members', [TareasController::class, 'getMembers']);
     Route::delete('/tareas/{tarea}/unassign-member/{user}', [TareasController::class, 'unassignMember']);
 
+    // ========================================
+    // RUTAS DE ACTIVIDADES
+    // ========================================
+    Route::get('/activities', [ActivityController::class, 'index']);
+    Route::get('/activities/tarea/{tareaId}', [ActivityController::class, 'getByTarea']);
+    Route::post('/activities', [ActivityController::class, 'store']);
+    Route::delete('/activities/{id}', [ActivityController::class, 'destroy']);
+    
+    
+    // ========================================
+    // RUTAS DE NOTIFICACIONES
+    // ========================================
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/unread-count', [NotificationController::class, 'getUnreadCount']);
+    Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
+    Route::delete('/notifications/delete-read', [NotificationController::class, 'deleteAllRead']);
+
 });
+
+// porque OnlyOffice necesita acceder sin token
+Route::post('/documentos/{id}/save-callback', [DocumentosController::class, 'saveDocument']);

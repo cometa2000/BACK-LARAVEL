@@ -2,10 +2,9 @@
 
 namespace App\Http\Controllers\Configuration;
 
-use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
 use App\Models\Configuration\Sucursale;
-
 
 class SucusaleController extends Controller
 {
@@ -16,7 +15,7 @@ class SucusaleController extends Controller
     {
         $search = $request->get("search");
 
-        $sucursales = Sucursale::where("name","like","%".$search."%")->orderBy("id","desc")->paginate(15);
+        $sucursales = Sucursale::where("name","like","%".$search."%")->orderBy("id","desc")->paginate(25);
 
         return response()->json([
             "total" => $sucursales->total(),
@@ -105,4 +104,3 @@ class SucusaleController extends Controller
         ]);
     }
 }
-

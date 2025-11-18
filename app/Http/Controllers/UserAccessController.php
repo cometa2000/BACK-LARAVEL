@@ -52,12 +52,12 @@ class UserAccessController extends Controller
             // "sucursales" => Sucursale::where("state",1)->get(),
         ]);
     }
+
     /**
      * Store a newly created resource in storage.
      */
     public function store(Request $request)
     {
-        //
         // $this->authorize("create",User::class);
         $USER_EXITS = User::where("email",$request->email)->first();
         if($USER_EXITS){
@@ -79,29 +79,29 @@ class UserAccessController extends Controller
         $role = Role::findOrFail($request->role_id);
         $user = User::create($request->all());
         $user->assignRole($role);
+        
+        // Recargar el usuario con sus relaciones
+        $user->load('role', 'roles', 'sucursale');
+        
         return response()->json([
             "message" => 200,
-            "users" => [
+            "user" => [  // ⚠️ CAMBIADO DE "users" A "user" (singular)
                 "id" => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
                 "surname" => $user->surname,
                 "full_name" => $user->name.' '.$user->surname,
                 "phone" =>  $user->phone,
-
                 "role_id" => $user->role_id,
                 "role" => $user->role,
                 "roles" => $user->roles,
-
                 "sucursale_id" => $user->sucursale_id,
-                "sucursale" => $user->sucursale,
-                "sucursales" => $user->sucursales,
-
+                "sucursal" => $user->sucursale,  // ⚠️ CAMBIADO DE "sucursale" A "sucursal" para consistencia
+                // "sucursales" => $user->sucursales,  // ❌ ELIMINADO - Esta relación no existe
                 "type_document" => $user->type_document,
                 "n_document" => $user->n_document,
                 "gender" => $user->gender,
                 "avatar" => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
-
                 "created_format_at" => $user->created_at->format("Y-m-d h:i A"),
             ]
         ]);
@@ -120,7 +120,6 @@ class UserAccessController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
         // $this->authorize("update",User::class);
         $USER_EXITS = User::where("email",$request->email)
                         ->where("id","<>",$id)->first();
@@ -156,9 +155,13 @@ class UserAccessController extends Controller
         }
 
         $user->update($request->all());
+        
+        // Recargar el usuario con sus relaciones
+        $user->load('role', 'roles', 'sucursale');
+        
         return response()->json([
             "message" => 200,
-            "users" => [
+            "user" => [  // ⚠️ CAMBIADO DE "users" A "user" (singular)
                 "id" => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
@@ -169,7 +172,7 @@ class UserAccessController extends Controller
                 "role" => $user->role,
                 "roles" => $user->roles,
                 "sucursale_id" => $user->sucursale_id,
-                "sucursale" => $user->sucursale,
+                "sucursal" => $user->sucursale,  // ⚠️ CAMBIADO PARA CONSISTENCIA
                 "type_document" => $user->type_document,
                 "n_document" => $user->n_document,
                 "gender" => $user->gender,

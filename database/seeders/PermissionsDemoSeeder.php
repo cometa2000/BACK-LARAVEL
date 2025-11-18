@@ -23,14 +23,23 @@ class PermissionsDemoSeeder extends Seeder
         Permission::create(['guard_name' => 'api','name' => 'register_role']);
         Permission::create(['guard_name' => 'api','name' => 'edit_role']);
         Permission::create(['guard_name' => 'api','name' => 'delete_role']);
-        Permission::create(['guard_name' => 'api','name' => 'register_user']);
 
+        Permission::create(['guard_name' => 'api','name' => 'register_user']);
         Permission::create(['guard_name' => 'api','name' => 'edit_user']);
         Permission::create(['guard_name' => 'api','name' => 'delete_user']);
+        
+        Permission::create(['guard_name' => 'api','name' => 'register_task']);
+        Permission::create(['guard_name' => 'api','name' => 'edit_task']);
+        Permission::create(['guard_name' => 'api','name' => 'delete_task']);
+
+        Permission::create(['guard_name' => 'api','name' => 'register_documents']);
+        Permission::create(['guard_name' => 'api','name' => 'edit_documents']);
+        Permission::create(['guard_name' => 'api','name' => 'delete_documents']);
+
         Permission::create(['guard_name' => 'api','name' => 'register_product']);
         Permission::create(['guard_name' => 'api','name' => 'edit_product']);
-
         Permission::create(['guard_name' => 'api','name' => 'delete_product']);
+
         Permission::create(['guard_name' => 'api','name' => 'show_wallet_price_product']);
         Permission::create(['guard_name' => 'api','name' => 'register_wallet_price_product']);
         Permission::create(['guard_name' => 'api','name' => 'edit_wallet_price_product']);

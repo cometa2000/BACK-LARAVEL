@@ -165,15 +165,12 @@ Route::group([
     // ========================================
     // RUTAS DE PERFIL (Protegidas con JWT)
     // ========================================
-    // Route::prefix('profile')->group(function () {
-    //     Route::get('/tareas', [ProfileController::class, 'getUserTareas']);
-    //     Route::get('/documentos', [ProfileController::class, 'getUserDocumentos']);
-    //     Route::get('/stats', [ProfileController::class, 'getUserStats']);
-    // });
-
     Route::get('/profile/tareas', [ProfileController::class, 'getUserTareas']);
     Route::get('/profile/documentos', [ProfileController::class, 'getUserDocumentos']);
     Route::get('/profile/stats', [ProfileController::class, 'getUserStats']);
+    
+    // ✅ NUEVO: Endpoint optimizado que devuelve todo en una sola llamada
+    Route::get('/profile/complete', [ProfileController::class, 'getCompleteProfile']);
 
 });
 

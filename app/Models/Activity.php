@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Models\User;
-use App\Models\tasks\Grupos;
 use App\Models\tasks\Tareas;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -36,16 +35,21 @@ class Activity extends Model
 
     /**
      * Relación con la tarea
+     * ⚠️ IMPORTANTE: Debe ser 'tarea' (singular) no 'tareas'
      */
-    public function tareas()
+    public function tarea()
     {
-        return $this->belongsTo(Tareas::class);
+        return $this->belongsTo(Tareas::class, 'tarea_id');
     }
 
-    public function grupos()
-    {
-        return $this->belongsTo(Grupos::class);
-    }
+    /**
+     * ❌ ELIMINAR: Esta relación no debería existir
+     * Activity no tiene grupo_id, se relaciona con Grupo a través de Tarea
+     */
+    // public function grupos()
+    // {
+    //     return $this->belongsTo(Grupos::class);
+    // }
 
     /**
      * Scope para obtener actividades recientes
@@ -86,6 +90,9 @@ class Activity extends Model
             'created' => 'plus-square',
             'completed' => 'verify',
             'deleted' => 'trash',
+            'updated' => 'pencil',
+            'member_added' => 'profile-user',
+            'member_removed' => 'profile-delete',
         ];
 
         return $icons[$this->type] ?? 'information';
@@ -106,6 +113,9 @@ class Activity extends Model
             'created' => 'success',
             'completed' => 'success',
             'deleted' => 'danger',
+            'updated' => 'info',
+            'member_added' => 'success',
+            'member_removed' => 'warning',
         ];
 
         return $colors[$this->type] ?? 'secondary';
@@ -113,15 +123,52 @@ class Activity extends Model
 
     /**
      * Método estático para registrar una actividad
+     * 
+     * @param int $userId - ID del usuario que realiza la acción
+     * @param int $tareaId - ID de la tarea relacionada
+     * @param string $type - Tipo de actividad
+     * @param string $description - Descripción de la actividad
+     * @param array $metadata - Datos adicionales
+     * @return Activity
      */
     public static function log($userId, $tareaId, $type, $description, $metadata = [])
     {
-        return self::create([
-            'user_id' => $userId,
-            'tarea_id' => $tareaId,
-            'type' => $type,
-            'description' => $description,
-            'metadata' => $metadata,
-        ]);
+        try {
+            return self::create([
+                'user_id' => $userId,
+                'tarea_id' => $tareaId,
+                'type' => $type,
+                'description' => $description,
+                'metadata' => $metadata,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error al registrar actividad: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Registrar múltiples actividades de una vez
+     * 
+     * @param array $activities - Array de actividades
+     * @return bool
+     */
+    public static function logBatch($activities)
+    {
+        try {
+            foreach ($activities as $activity) {
+                self::log(
+                    $activity['user_id'],
+                    $activity['tarea_id'],
+                    $activity['type'],
+                    $activity['description'],
+                    $activity['metadata'] ?? []
+                );
+            }
+            return true;
+        } catch (\Exception $e) {
+            \Log::error('Error al registrar actividades en batch: ' . $e->getMessage());
+            return false;
+        }
     }
 }

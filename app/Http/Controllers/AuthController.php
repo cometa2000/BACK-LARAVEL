@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use Validator;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
@@ -18,61 +20,91 @@ class AuthController extends Controller
     {
         $this->middleware('auth:api', ['except' => ['login', 'register']]);
     }
- 
- 
+
     /**
      * Register a User.
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function register() {
-        // $this->authorize("create",User::class);
-        $validator = Validator::make(request()->all(), [
-            'name' => 'required',
-            'email' => 'required|email|unique:users',
-            'password' => 'required|min:8',
+    public function register(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:8',
         ]);
- 
+
         if($validator->fails()){
             return response()->json($validator->errors()->toJson(), 400);
         }
- 
-        $user = new User;
-        $user->name = request()->name;
-        $user->email = request()->email;
-        $user->password = bcrypt(request()->password);
-        $user->save();
- 
-        return response()->json($user, 201);
+
+        $user = User::create(array_merge(
+            $validator->validated(),
+            ['password' => bcrypt($request->password)]
+        ));
+
+        return response()->json([
+            'message' => 'User successfully registered',
+            'user' => $user
+        ], 201);
     }
- 
- 
+
     /**
      * Get a JWT via given credentials.
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function login()
+    public function login(Request $request)
     {
         $credentials = request(['email', 'password']);
- 
+
         if (! $token = auth('api')->attempt($credentials)) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
- 
+
         return $this->respondWithToken($token);
     }
- 
+
     /**
-     * Get the authenticated User.
+     * Get the authenticated User with all relationships.
      *
      * @return \Illuminate\Http\JsonResponse
      */
     public function me()
     {
-        return response()->json(auth('api')->user());
+        $user = auth('api')->user();
+        
+        // Cargar las relaciones necesarias
+        $user->load('role', 'roles', 'sucursale');
+        
+        // Obtener permisos
+        $permissions = $user->getAllPermissions()->map(function($perm) {
+            return $perm->name;
+        });
+        
+        return response()->json([
+            "id" => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            "surname" => $user->surname,
+            "full_name" => $user->name.' '.$user->surname,
+            "phone" => $user->phone,
+            "role_id" => $user->role_id,
+            "role" => $user->role,
+            "role_name" => $user->role ? $user->role->name : null,
+            "roles" => $user->roles,
+            "sucursale_id" => $user->sucursale_id,
+            "sucursal" => $user->sucursale,
+            "sucursale_name" => $user->sucursale ? $user->sucursale->name : null,
+            "type_document" => $user->type_document,
+            "n_document" => $user->n_document,
+            "gender" => $user->gender,
+            "avatar" => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+            "permissions" => $permissions,
+            "created_format_at" => $user->created_at->format("Y-m-d h:i A"),
+        ]);
     }
- 
+
     /**
      * Log the user out (Invalidate the token).
      *
@@ -81,10 +113,10 @@ class AuthController extends Controller
     public function logout()
     {
         auth('api')->logout();
- 
+
         return response()->json(['message' => 'Successfully logged out']);
     }
- 
+
     /**
      * Refresh a token.
      *
@@ -94,7 +126,7 @@ class AuthController extends Controller
     {
         return $this->respondWithToken(auth('api')->refresh());
     }
- 
+
     /**
      * Get the token array structure.
      *
@@ -104,21 +136,40 @@ class AuthController extends Controller
      */
     protected function respondWithToken($token)
     {
-        $permissions = auth("api")->user()->getAllPermissions()->map(function($perm) {
+        $user = auth('api')->user();
+        
+        // Cargar las relaciones necesarias
+        $user->load('role', 'roles', 'sucursale');
+        
+        // Obtener permisos
+        $permissions = $user->getAllPermissions()->map(function($perm) {
             return $perm->name;
         });
+        
         return response()->json([
             'access_token' => $token,
             'token_type' => 'bearer',
             'expires_in' => auth('api')->factory()->getTTL() * 60,
             'user' => [
-                "full_name" => auth("api")->user()->name.' '.auth("api")->user()->surname,
-                "email" => auth("api")->user()->email,
-                "avatar" => auth('api')->user()->avatar ? env("APP_URL")."storage/".auth('api')->user()->avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
-                "role_name" => auth("api")->user()->role->name,
+                "id" => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                "surname" => $user->surname,
+                "full_name" => $user->name.' '.$user->surname,
+                "phone" => $user->phone,
+                "role_id" => $user->role_id,
+                "role" => $user->role,
+                "role_name" => $user->role ? $user->role->name : null,
+                "roles" => $user->roles,
+                "sucursale_id" => $user->sucursale_id,
+                "sucursal" => $user->sucursale,
+                "sucursale_name" => $user->sucursale ? $user->sucursale->name : null,
+                "type_document" => $user->type_document,
+                "n_document" => $user->n_document,
+                "gender" => $user->gender,
+                "avatar" => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
                 "permissions" => $permissions,
-                "sucursale_id" => auth('api')->user()->sucursale_id,
-                "sucursale_name" => auth('api')->user()->sucursale->name,
+                "created_format_at" => $user->created_at->format("Y-m-d h:i A"),
             ]
         ]);
     }

@@ -13,15 +13,16 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Traits\HasRoles;
 
-// JWT - ⭐ IMPORTANTE: Este es el import correcto
+// JWT
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
-// Tu configuración
+// Configuración
 use App\Models\Configuration\Sucursale;
 
-// Nuevos modelos para actividades y notificaciones
+// Modelos relacionados
 use App\Models\tasks\Grupos;
 use App\Models\tasks\Tareas;
+use App\Models\documents\Documentos;
 use App\Models\Notification;
 use App\Models\Activity;
 
@@ -43,9 +44,10 @@ class User extends Authenticatable implements JWTSubject
         'surname',
         'phone',
         'role_id',
-        'sucursal_id',
+        'sucursale_id',
         'type_document',
         'n_document',
+        'address',
         'gender',
         'avatar'
     ];
@@ -95,7 +97,7 @@ class User extends Authenticatable implements JWTSubject
     }
 
     // ========================================
-    // RELACIONES EXISTENTES (NO MODIFICADAS)
+    // RELACIONES BÁSICAS
     // ========================================
 
     /**
@@ -115,7 +117,7 @@ class User extends Authenticatable implements JWTSubject
     }
 
     // ========================================
-    // NUEVAS RELACIONES CON GRUPOS
+    // RELACIONES CON GRUPOS
     // ========================================
 
     /**
@@ -154,7 +156,7 @@ class User extends Authenticatable implements JWTSubject
     }
 
     // ========================================
-    // NUEVAS RELACIONES CON TAREAS
+    // RELACIONES CON TAREAS
     // ========================================
 
     /**
@@ -167,6 +169,7 @@ class User extends Authenticatable implements JWTSubject
 
     /**
      * Tareas asignadas al usuario (many-to-many)
+     * ⭐ ESTA ES LA RELACIÓN CRÍTICA PARA EL PERFIL
      */
     public function assignedTareas()
     {
@@ -175,7 +178,19 @@ class User extends Authenticatable implements JWTSubject
     }
 
     // ========================================
-    // NUEVAS RELACIONES CON NOTIFICACIONES
+    // RELACIONES CON DOCUMENTOS
+    // ========================================
+
+    /**
+     * Documentos creados por el usuario
+     */
+    public function documentos()
+    {
+        return $this->hasMany(Documentos::class, 'user_id');
+    }
+
+    // ========================================
+    // RELACIONES CON NOTIFICACIONES
     // ========================================
 
     /**
@@ -207,7 +222,7 @@ class User extends Authenticatable implements JWTSubject
     }
 
     // ========================================
-    // NUEVAS RELACIONES CON ACTIVIDADES
+    // RELACIONES CON ACTIVIDADES
     // ========================================
 
     /**
@@ -237,15 +252,11 @@ class User extends Authenticatable implements JWTSubject
     public function getAvatarUrlAttribute()
     {
         if ($this->avatar) {
-            return $this->avatar;
+            return env("APP_URL")."/storage/".$this->avatar;
         }
         
-        // Avatar por defecto usando UI Avatars
-        $name = $this->name ?? 'U';
-        $surname = $this->surname ?? 'S';
-        $initials = strtoupper(substr($name, 0, 1) . substr($surname, 0, 1));
-        
-        return "https://ui-avatars.com/api/?name={$initials}&background=random&color=fff&size=128";
+        // Avatar por defecto
+        return 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png';
     }
 
     /**

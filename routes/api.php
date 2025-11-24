@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ActividadController;
 use App\Http\Controllers\UserAccessController;
@@ -160,6 +161,19 @@ Route::group([
     Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::delete('/notifications/delete-read', [NotificationController::class, 'deleteAllRead']);
+
+    // ========================================
+    // RUTAS DE PERFIL (Protegidas con JWT)
+    // ========================================
+    // Route::prefix('profile')->group(function () {
+    //     Route::get('/tareas', [ProfileController::class, 'getUserTareas']);
+    //     Route::get('/documentos', [ProfileController::class, 'getUserDocumentos']);
+    //     Route::get('/stats', [ProfileController::class, 'getUserStats']);
+    // });
+
+    Route::get('/profile/tareas', [ProfileController::class, 'getUserTareas']);
+    Route::get('/profile/documentos', [ProfileController::class, 'getUserDocumentos']);
+    Route::get('/profile/stats', [ProfileController::class, 'getUserStats']);
 
 });
 

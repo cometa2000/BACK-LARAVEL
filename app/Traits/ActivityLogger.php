@@ -3,203 +3,242 @@
 namespace App\Traits;
 
 use App\Models\Activity;
-use App\Models\Notification;
 use Illuminate\Support\Facades\Auth;
 
+/**
+ * Trait ActivityLogger
+ * 
+ * Este trait registra automáticamente las actividades cuando se crean,
+ * actualizan o eliminan modelos que lo usen.
+ * 
+ * IMPORTANTE: El modelo debe tener 'tarea_id' o 'id' (si es Tarea)
+ * 
+ * Uso:
+ * use ActivityLogger;
+ */
 trait ActivityLogger
 {
     /**
-     * Registrar actividad de creación de tarea
+     * Boot del trait
      */
-    public function logTareaCreated($tarea)
+    protected static function bootActivityLogger()
     {
-        $user = Auth::user();
-        
-        Activity::log(
-            $user->id,
-            $tarea->id,
-            'created',
-            'creó esta tarea',
-            ['title' => $tarea->title]
-        );
+        // Al crear una tarea
+        static::created(function ($model) {
+            $user = Auth::user();
+            if (!$user) return;
 
-        // Notificar a los miembros asignados (si hay)
-        if ($tarea->miembros && count($tarea->miembros) > 0) {
-            foreach ($tarea->miembros as $miembro) {
-                if ($miembro->id !== $user->id) {
-                    Notification::notify(
-                        $miembro->id,
-                        'task_assigned',
-                        'Nueva tarea asignada',
-                        "{$user->name} te asignó la tarea: {$tarea->title}",
-                        [
-                            'from_user_id' => $user->id,
-                            'tarea_id' => $tarea->id,
-                            'grupo_id' => $tarea->lista->grupo_id ?? null,
-                        ]
-                    );
-                }
+            // Si el modelo ES una tarea
+            if ($model instanceof \App\Models\tasks\Tareas) {
+                Activity::log(
+                    $user->id,
+                    $model->id,
+                    'created',
+                    'creó la tarea',
+                    [
+                        'tarea_title' => $model->name ?? $model->title ?? 'Sin título',
+                        'status' => $model->status,
+                    ]
+                );
             }
-        }
+        });
+
+        // Al actualizar una tarea
+        static::updated(function ($model) {
+            $user = Auth::user();
+            if (!$user) return;
+
+            // Si el modelo ES una tarea
+            if ($model instanceof \App\Models\tasks\Tareas) {
+                $changes = $model->getDirty();
+                $original = $model->getOriginal();
+
+                // Detectar cambios importantes
+                $activityType = 'updated';
+                $description = 'actualizó la tarea';
+                $metadata = [];
+
+                // Cambio de estado
+                if (isset($changes['status'])) {
+                    $activityType = 'status_change';
+                    $description = "cambió el estado de '{$original['status']}' a '{$changes['status']}'";
+                    $metadata = [
+                        'old_status' => $original['status'],
+                        'new_status' => $changes['status'],
+                    ];
+                }
+                // Cambio de fecha de vencimiento
+                elseif (isset($changes['due_date'])) {
+                    $activityType = 'due_date';
+                    $description = 'actualizó la fecha de vencimiento';
+                    $metadata = [
+                        'old_due_date' => $original['due_date'],
+                        'new_due_date' => $changes['due_date'],
+                    ];
+                }
+                // Tarea completada
+                elseif (isset($changes['status']) && $changes['status'] === 'completed') {
+                    $activityType = 'completed';
+                    $description = 'completó la tarea';
+                }
+
+                Activity::log(
+                    $user->id,
+                    $model->id,
+                    $activityType,
+                    $description,
+                    array_merge($metadata, [
+                        'tarea_title' => $model->name ?? $model->title ?? 'Sin título',
+                    ])
+                );
+            }
+        });
+
+        // Al eliminar una tarea (soft delete)
+        static::deleted(function ($model) {
+            $user = Auth::user();
+            if (!$user) return;
+
+            // Si el modelo ES una tarea
+            if ($model instanceof \App\Models\tasks\Tareas) {
+                Activity::log(
+                    $user->id,
+                    $model->id,
+                    'deleted',
+                    'eliminó la tarea',
+                    [
+                        'tarea_title' => $model->name ?? $model->title ?? 'Sin título',
+                    ]
+                );
+            }
+        });
     }
 
     /**
-     * Registrar actividad de completar tarea
+     * Registrar actividad de asignación de miembro
+     * 
+     * @param int $userId - ID del usuario asignado
+     * @param string $userName - Nombre del usuario asignado
+     * @return void
      */
-    public function logTareaCompleted($tarea)
+    public function logMemberAssignment($userId, $userName)
     {
-        $user = Auth::user();
-        
-        Activity::log(
-            $user->id,
-            $tarea->id,
-            'completed',
-            'completó esta tarea',
-            ['title' => $tarea->title]
-        );
+        $currentUser = Auth::user();
+        if (!$currentUser) return;
 
-        // Notificar al creador (si no es el mismo usuario)
-        if ($tarea->user_id && $tarea->user_id !== $user->id) {
-            Notification::notify(
-                $tarea->user_id,
-                'task_completed',
-                'Tarea completada',
-                "{$user->name} completó la tarea: {$tarea->title}",
-                [
-                    'from_user_id' => $user->id,
-                    'tarea_id' => $tarea->id,
-                    'grupo_id' => $tarea->lista->grupo_id ?? null,
-                ]
-            );
-        }
-    }
-
-    /**
-     * Registrar actividad de cambio de estado
-     */
-    public function logTareaStatusChanged($tarea, $oldStatus, $newStatus)
-    {
-        $user = Auth::user();
-        
-        $statusLabels = [
-            'pending' => 'Pendiente',
-            'in_progress' => 'En Progreso',
-            'completed' => 'Completada',
-            'cancelled' => 'Cancelada',
-        ];
-        
         Activity::log(
-            $user->id,
-            $tarea->id,
-            'status_change',
-            "cambió el estado de {$statusLabels[$oldStatus]} a {$statusLabels[$newStatus]}",
+            $currentUser->id,
+            $this->id,
+            'member_added',
+            "asignó a {$userName} a la tarea",
             [
-                'old_status' => $oldStatus,
-                'new_status' => $newStatus,
+                'assigned_user_id' => $userId,
+                'assigned_user_name' => $userName,
+                'tarea_title' => $this->name ?? $this->title ?? 'Sin título',
             ]
         );
     }
 
     /**
-     * Registrar actividad de asignación de miembros
+     * Registrar actividad de remoción de miembro
+     * 
+     * @param int $userId - ID del usuario removido
+     * @param string $userName - Nombre del usuario removido
+     * @return void
      */
-    public function logMemberAssigned($tarea, $miembro)
+    public function logMemberRemoval($userId, $userName)
     {
-        $user = Auth::user();
-        
-        Activity::log(
-            $user->id,
-            $tarea->id,
-            'assignment',
-            "asignó a {$miembro->name} {$miembro->surname}",
-            ['member_id' => $miembro->id]
-        );
+        $currentUser = Auth::user();
+        if (!$currentUser) return;
 
-        // Notificar al miembro asignado
-        if ($miembro->id !== $user->id) {
-            Notification::notify(
-                $miembro->id,
-                'task_assigned',
-                'Te asignaron a una tarea',
-                "{$user->name} te asignó a la tarea: {$tarea->title}",
-                [
-                    'from_user_id' => $user->id,
-                    'tarea_id' => $tarea->id,
-                    'grupo_id' => $tarea->lista->grupo_id ?? null,
-                ]
-            );
-        }
-    }
-
-    /**
-     * Registrar actividad de cambio de fecha de vencimiento
-     */
-    public function logDueDateChanged($tarea, $oldDate, $newDate)
-    {
-        $user = Auth::user();
-        
         Activity::log(
-            $user->id,
-            $tarea->id,
-            'due_date',
-            "cambió la fecha de vencimiento",
+            $currentUser->id,
+            $this->id,
+            'member_removed',
+            "removió a {$userName} de la tarea",
             [
-                'old_date' => $oldDate,
-                'new_date' => $newDate,
+                'removed_user_id' => $userId,
+                'removed_user_name' => $userName,
+                'tarea_title' => $this->name ?? $this->title ?? 'Sin título',
             ]
         );
     }
 
     /**
-     * Registrar actividad de adjunto agregado
+     * Registrar actividad de adjunto
+     * 
+     * @param string $fileName - Nombre del archivo
+     * @return void
      */
-    public function logAttachmentAdded($tarea, $fileName)
+    public function logAttachment($fileName)
     {
         $user = Auth::user();
-        
+        if (!$user) return;
+
         Activity::log(
             $user->id,
-            $tarea->id,
+            $this->id,
             'attachment',
-            "adjuntó un archivo: {$fileName}",
-            ['file_name' => $fileName]
+            "agregó el archivo '{$fileName}'",
+            [
+                'file_name' => $fileName,
+                'tarea_title' => $this->name ?? $this->title ?? 'Sin título',
+            ]
         );
     }
 
     /**
-     * Registrar actividad de comentario
+     * Registrar actividad de checklist
+     * 
+     * @param string $checklistTitle - Título del checklist
+     * @param string $action - Acción realizada (added, updated, removed)
+     * @return void
      */
-    public function logComment($tarea, $comment)
+    public function logChecklist($checklistTitle, $action = 'added')
     {
         $user = Auth::user();
-        
-        return Activity::log(
-            $user->id,
-            $tarea->id,
-            'comment',
-            $comment,
-            []
-        );
-    }
+        if (!$user) return;
 
-    /**
-     * Registrar actividad de checklist actualizado
-     */
-    public function logChecklistUpdated($tarea, $checklistItem, $isCompleted)
-    {
-        $user = Auth::user();
-        
-        $action = $isCompleted ? 'completó' : 'marcó como incompleto';
-        
+        $descriptions = [
+            'added' => "agregó el checklist '{$checklistTitle}'",
+            'updated' => "actualizó el checklist '{$checklistTitle}'",
+            'removed' => "eliminó el checklist '{$checklistTitle}'",
+        ];
+
         Activity::log(
             $user->id,
-            $tarea->id,
+            $this->id,
             'checklist',
-            "{$action} el ítem: {$checklistItem}",
+            $descriptions[$action] ?? "modificó el checklist '{$checklistTitle}'",
             [
-                'checklist_item' => $checklistItem,
-                'is_completed' => $isCompleted,
+                'checklist_title' => $checklistTitle,
+                'action' => $action,
+                'tarea_title' => $this->name ?? $this->title ?? 'Sin título',
             ]
+        );
+    }
+
+    /**
+     * Registrar actividad personalizada
+     * 
+     * @param string $type - Tipo de actividad
+     * @param string $description - Descripción
+     * @param array $metadata - Datos adicionales
+     * @return void
+     */
+    public function logCustomActivity($type, $description, $metadata = [])
+    {
+        $user = Auth::user();
+        if (!$user) return;
+
+        Activity::log(
+            $user->id,
+            $this->id,
+            $type,
+            $description,
+            array_merge($metadata, [
+                'tarea_title' => $this->name ?? $this->title ?? 'Sin título',
+            ])
         );
     }
 }

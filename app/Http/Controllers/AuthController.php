@@ -99,7 +99,8 @@ class AuthController extends Controller
             "type_document" => $user->type_document,
             "n_document" => $user->n_document,
             "gender" => $user->gender,
-            "avatar" => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+            // ✅ Devolver solo el nombre del archivo (ej: "1.png")
+            "avatar" => $user->avatar ?? '1.png',
             "permissions" => $permissions,
             "created_format_at" => $user->created_at->format("Y-m-d h:i A"),
         ]);
@@ -167,7 +168,8 @@ class AuthController extends Controller
                 "type_document" => $user->type_document,
                 "n_document" => $user->n_document,
                 "gender" => $user->gender,
-                "avatar" => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                // ✅ Devolver solo el nombre del archivo (ej: "1.png")
+                "avatar" => $user->avatar ?? '1.png',
                 "permissions" => $permissions,
                 "created_format_at" => $user->created_at->format("Y-m-d h:i A"),
             ]

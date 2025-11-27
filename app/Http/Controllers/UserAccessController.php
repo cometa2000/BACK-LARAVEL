@@ -39,7 +39,8 @@ class UserAccessController extends Controller
                     "type_document" => $user->type_document,
                     "n_document" => $user->n_document,
                     "gender" => $user->gender,
-                    "avatar" => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                    // ✅ Devolver solo el nombre del archivo (ej: "1.png")
+                    "avatar" => $user->avatar ?? '1.png',
                     "created_format_at" => $user->created_at->format("Y-m-d h:i A"),
                 ];
             }),
@@ -50,7 +51,6 @@ class UserAccessController extends Controller
         return response()->json([
             "roles" => Role::all(), 
             "sucursales" => Sucursale::all(),
-            // "sucursales" => Sucursale::where("state",1)->get(),
         ]);
     }
 
@@ -148,9 +148,13 @@ class UserAccessController extends Controller
             ]);
         }
 
-        if($request->hasFile("imagen")){
-            $path = Storage::putFile("users",$request->file("imagen"));
-            $request->request->add(["avatar" => $path]);
+        // ✅ ACTUALIZADO: Ya no procesamos archivo de imagen, solo recibimos el nombre del avatar
+        // Si se recibe un avatar, simplemente lo guardamos como está (ejemplo: "3.png")
+        if ($request->has("avatar")) {
+            $request->request->add(["avatar" => $request->avatar]);
+        } else {
+            // Avatar por defecto si no se proporciona
+            $request->request->add(["avatar" => "1.png"]);
         }
 
         // ✅ GENERAR CONTRASEÑA TEMPORAL AUTOMÁTICAMENTE
@@ -194,7 +198,8 @@ class UserAccessController extends Controller
                 "type_document" => $user->type_document,
                 "n_document" => $user->n_document,
                 "gender" => $user->gender,
-                "avatar" => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                // ✅ Devolver solo el nombre del archivo (ej: "1.png")
+                "avatar" => $user->avatar ?? '1.png',
                 "created_format_at" => $user->created_at->format("Y-m-d h:i A"),
             ]
         ]);
@@ -225,12 +230,14 @@ class UserAccessController extends Controller
 
         $user = User::findOrFail($id);
 
-        if($request->hasFile("imagen")){
-            if($user->avatar){
+        // ✅ ACTUALIZADO: Ya no procesamos archivo de imagen, solo recibimos el nombre del avatar
+        // Si se recibe un avatar, simplemente lo guardamos como está (ejemplo: "3.png")
+        if ($request->has("avatar")) {
+            // Si el usuario tenía un avatar antiguo en storage, lo eliminamos
+            if ($user->avatar && strpos($user->avatar, 'storage') !== false) {
                 Storage::delete($user->avatar);
             }
-            $path = Storage::putFile("users",$request->file("imagen"));
-            $request->request->add(["avatar" => $path]);
+            $request->request->add(["avatar" => $request->avatar]);
         }
 
         // ⚠️ IMPORTANTE: En la actualización, solo encriptar si se proporciona una nueva contraseña
@@ -270,7 +277,8 @@ class UserAccessController extends Controller
                 "type_document" => $user->type_document,
                 "n_document" => $user->n_document,
                 "gender" => $user->gender,
-                "avatar" => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
+                // ✅ Devolver solo el nombre del archivo (ej: "1.png")
+                "avatar" => $user->avatar ?? '1.png',
                 "created_format_at" => $user->created_at->format("Y-m-d h:i A"),
             ]
         ]);
@@ -283,9 +291,12 @@ class UserAccessController extends Controller
     {
         // $this->authorize("delete",User::class);
         $user = User::findOrFail($id);
-        if($user->avatar){
+        
+        // ✅ ACTUALIZADO: Solo eliminar si es un archivo antiguo en storage
+        if($user->avatar && strpos($user->avatar, 'storage') !== false){
             Storage::delete($user->avatar);
         }
+        
         $user->delete();
         return response()->json([
             "message" => 200,

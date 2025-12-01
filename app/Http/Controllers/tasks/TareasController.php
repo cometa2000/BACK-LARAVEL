@@ -86,7 +86,7 @@ class TareasController extends Controller
                             'name' => $user->name,
                             'surname' => $user->surname,
                             'email' => $user->email,
-                            'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                            'avatar' => $user->avatar ? $user->avatar : null,
                         ];
                     }),
                     
@@ -221,7 +221,7 @@ class TareasController extends Controller
                         'name' => $user->name,
                         'surname' => $user->surname,
                         'email' => $user->email,
-                        'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                        'avatar' => $user->avatar ? $user->avatar : null,
                     ];
                 }),
                 
@@ -866,7 +866,7 @@ class TareasController extends Controller
                         'name' => $user->name,
                         'surname' => $user->surname,
                         'email' => $user->email,
-                        'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                        'avatar' => $user->avatar ? $user->avatar : null,
                     ];
                 }),
                 'notificaciones_enviadas' => $nuevosUsuarios->count()
@@ -913,7 +913,7 @@ class TareasController extends Controller
                     'name' => $user->name,
                     'surname' => $user->surname,
                     'email' => $user->email,
-                    'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                    'avatar' => $user->avatar ? $user->avatar : null,
                 ];
             });
 
@@ -1052,7 +1052,7 @@ class TareasController extends Controller
                     'name' => $user->name,
                     'surname' => $user->surname,
                     'email' => $user->email,
-                    'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                    'avatar' => $user->avatar ? $user->avatar : null,
                 ];
             })
         ];

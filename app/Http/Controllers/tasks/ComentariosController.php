@@ -28,7 +28,7 @@ class ComentariosController extends Controller
                         'id' => $comentario->user->id,
                         'name' => $comentario->user->name . ' ' . ($comentario->user->surname ?? ''),
                         'avatar' => $comentario->user->avatar 
-                            ? env("APP_URL")."/storage/".$comentario->user->avatar 
+                            ? $comentario->user->avatar 
                             : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
                     ],
                     'created_at' => $comentario->created_at->format('d M Y, H:i'),
@@ -54,7 +54,7 @@ class ComentariosController extends Controller
                         'id' => $actividad->user->id,
                         'name' => $actividad->user->name . ' ' . ($actividad->user->surname ?? ''),
                         'avatar' => $actividad->user->avatar 
-                            ? env("APP_URL")."/storage/".$actividad->user->avatar 
+                            ? $actividad->user->avatar 
                             : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
                     ],
                     'created_at' => $actividad->created_at->format('d M Y, H:i'),
@@ -124,7 +124,7 @@ class ComentariosController extends Controller
                     'id' => $comentario->user->id,
                     'name' => $comentario->user->name . ' ' . ($comentario->user->surname ?? ''),
                     'avatar' => $comentario->user->avatar 
-                        ? env("APP_URL")."/storage/".$comentario->user->avatar 
+                        ? $comentario->user->avatar 
                         : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
                 ],
                 'created_at' => $comentario->created_at->format('d M Y, H:i'),
@@ -143,7 +143,7 @@ class ComentariosController extends Controller
                     'id' => $actividad->user->id,
                     'name' => $actividad->user->name . ' ' . ($actividad->user->surname ?? ''),
                     'avatar' => $actividad->user->avatar 
-                        ? env("APP_URL")."/storage/".$actividad->user->avatar 
+                        ? $actividad->user->avatar 
                         : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
                 ],
                 'created_at' => $actividad->created_at->format('d M Y, H:i'),
@@ -184,7 +184,7 @@ class ComentariosController extends Controller
                     'id' => $comentario->user->id,
                     'name' => $comentario->user->name . ' ' . ($comentario->user->surname ?? ''),
                     'avatar' => $comentario->user->avatar 
-                        ? env("APP_URL")."/storage/".$comentario->user->avatar 
+                        ? $comentario->user->avatar 
                         : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
                 ],
                 'created_at' => $comentario->created_at->format('d M Y, H:i'),

@@ -170,7 +170,7 @@ class GruposController extends Controller
                         'name' => $user->name,
                         'surname' => $user->surname,
                         'email' => $user->email,
-                        'avatar' => $user->avatar ? env("APP_URL")."/storage/".$user->avatar : null,
+                        'avatar' => $user->avatar ? $user->avatar : null,
                         'permission_level' => $user->pivot->permission_level
                     ];
                 }),
@@ -179,7 +179,7 @@ class GruposController extends Controller
                     'name' => $grupo->user->name,
                     'surname' => $grupo->user->surname,
                     'email' => $grupo->user->email,
-                    'avatar' => $grupo->user->avatar ? env("APP_URL")."/storage/".$grupo->user->avatar : null,
+                    'avatar' => $grupo->user->avatar ? $grupo->user->avatar : null,
                 ],
             ],
         ]);
@@ -477,7 +477,7 @@ class GruposController extends Controller
                     'email' => $user->email,
                     'phone' => $user->phone,
                     'avatar' => $user->avatar 
-                        ? env("APP_URL")."/storage/".$user->avatar 
+                        ? $user->avatar 
                         : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
                 ];
             })
@@ -520,7 +520,7 @@ class GruposController extends Controller
                     'email' => $user->email,
                     'phone' => $user->phone,
                     'avatar' => $user->avatar 
-                        ? env("APP_URL")."/storage/".$user->avatar 
+                        ? $user->avatar 
                         : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
                     'permission_level' => $user->pivot->permission_level
                 ];
@@ -557,7 +557,7 @@ class GruposController extends Controller
                     'surname' => $user->surname,     // ✅ Separado
                     'email' => $user->email,
                     'avatar' => $user->avatar 
-                        ? env("APP_URL")."/storage/".$user->avatar 
+                        ? $user->avatar 
                         : null,  // ✅ Usar null en vez de imagen placeholder
                     'permission_level' => $user->pivot->permission_level
                 ];
@@ -683,7 +683,7 @@ class GruposController extends Controller
                 "message_text" => "Permiso actualizado correctamente",
                 "permission_level" => $request->permission_level
             ]);
-            
+
             // Actualizar el nivel de permiso en la tabla pivote
             $grupo->sharedUsers()->updateExistingPivot($userId, [
                 'permission_level' => $request->permission_level

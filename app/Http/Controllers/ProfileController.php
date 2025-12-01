@@ -81,7 +81,7 @@ class ProfileController extends Controller
                                 'id' => $user->id,
                                 'full_name' => $user->name . ' ' . $user->surname,
                                 'avatar' => $user->avatar 
-                                    ? env("APP_URL")."/storage/".$user->avatar 
+                                    ? $user->avatar 
                                     : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
                             ];
                         }) : [],

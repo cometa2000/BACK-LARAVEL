@@ -6,9 +6,13 @@ use App\Models\User;
 use App\Models\tasks\Grupos;
 use Illuminate\Http\Request;
 use App\Mail\GrupoCreadoMail;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Log;
+use App\Services\NotificationService;
+use App\Mail\GrupoCompartidoInvitadoMail;
+use App\Mail\GrupoCompartidoPropietarioMail;
+use Illuminate\Validation\ValidationException;
 
 class GruposController extends Controller
 {
@@ -79,17 +83,29 @@ class GruposController extends Controller
                 
                 // Verificar que el usuario tenga email
                 if ($usuario && $usuario->email) {
-                    \Illuminate\Support\Facades\Mail::to($usuario->email)
-                        ->send(new \App\Mail\GrupoCreadoMail(
+                    Mail::to($usuario->email)
+                        ->send(new GrupoCreadoMail(
                             $grupo->name,
                             trim($usuario->name . ' ' . ($usuario->surname ?? ''))
                         ));
                     
-                    \Illuminate\Support\Facades\Log::info('✅ Correo enviado a: ' . $usuario->email);
+                    Log::info('✅ Correo enviado a: ' . $usuario->email);
                 }
                 
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::warning('⚠️ No se pudo enviar correo: ' . $e->getMessage());
+                Log::warning('⚠️ No se pudo enviar correo: ' . $e->getMessage());
+            }
+
+            try {
+                NotificationService::grupoCreado($grupo, $usuario);
+                
+                Log::info('✅ Notificación de grupo creado enviada', [
+                    'grupo_id' => $grupo->id,
+                    'grupo_nombre' => $grupo->name,
+                    'usuario_id' => $usuario->id
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('⚠️ No se pudo crear notificación de grupo creado: ' . $e->getMessage());
             }
 
             // ✅ Devolver la MISMA estructura que index()
@@ -112,7 +128,7 @@ class GruposController extends Controller
                 ],
             ]);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 "message" => 403,
                 "message_text" => "El nombre del grupo ya existe o es inválido",
@@ -120,8 +136,8 @@ class GruposController extends Controller
             ], 422);
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('❌ Error al crear grupo: ' . $e->getMessage());
-            \Illuminate\Support\Facades\Log::error($e->getTraceAsString());
+            Log::error('❌ Error al crear grupo: ' . $e->getMessage());
+            Log::error($e->getTraceAsString());
 
             return response()->json([
                 "message" => 500,
@@ -337,17 +353,28 @@ class GruposController extends Controller
             // 2️⃣ Enviar correo al PROPIETARIO (quien comparte)
             try {
                 if ($propietario && $propietario->email) {
-                    \Illuminate\Support\Facades\Mail::to($propietario->email)
-                        ->send(new \App\Mail\GrupoCompartidoPropietarioMail(
+                    Mail::to($propietario->email)
+                        ->send(new GrupoCompartidoPropietarioMail(
                             $grupo->name,
                             $nombrePropietario,
                             $usuariosParaCorreo
                         ));
                     
-                    \Illuminate\Support\Facades\Log::info('✅ Correo enviado al propietario: ' . $propietario->email);
+                    // ✅ CREAR NOTIFICACIÓN EN EL SISTEMA para el propietario
+                    NotificationService::grupoCompartidoPropietario(
+                        $grupo, 
+                        $propietario, 
+                        $usuariosParaCorreo
+                    );
+                    
+                    Log::info('✅ Correo y notificación enviados al propietario', [
+                        'email' => $propietario->email,
+                        'grupo_id' => $grupo->id,
+                        'usuarios_compartidos' => count($usuariosParaCorreo)
+                    ]);
                 }
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('❌ Error al enviar correo al propietario: ' . $e->getMessage());
+                Log::error('❌ Error al enviar correo/notificación al propietario: ' . $e->getMessage());
             }
 
             // 3️⃣ Enviar correo a CADA USUARIO INVITADO
@@ -356,17 +383,29 @@ class GruposController extends Controller
                     if ($usuario && $usuario->email) {
                         $nombreInvitado = trim($usuario->name . ' ' . ($usuario->surname ?? ''));
                         
-                        \Illuminate\Support\Facades\Mail::to($usuario->email)
-                            ->send(new \App\Mail\GrupoCompartidoInvitadoMail(
+                        // Enviar correo
+                        Mail::to($usuario->email)
+                            ->send(new GrupoCompartidoInvitadoMail(
                                 $grupo->name,
                                 $nombreInvitado,
                                 $nombrePropietario
                             ));
                         
-                        \Illuminate\Support\Facades\Log::info('✅ Correo enviado al invitado: ' . $usuario->email);
+                        // ✅ CREAR NOTIFICACIÓN EN EL SISTEMA para el invitado
+                        NotificationService::grupoCompartidoInvitado(
+                            $grupo, 
+                            $propietario, 
+                            $usuario
+                        );
+                        
+                        Log::info('✅ Correo y notificación enviados al invitado', [
+                            'email' => $usuario->email,
+                            'grupo_id' => $grupo->id,
+                            'nombre' => $nombreInvitado
+                        ]);
                     }
                 } catch (\Exception $e) {
-                    \Illuminate\Support\Facades\Log::error('❌ Error al enviar correo al invitado ' . $usuario->email . ': ' . $e->getMessage());
+                    Log::error('❌ Error al enviar correo/notificación al invitado ' . $usuario->email . ': ' . $e->getMessage());
                 }
             }
 
@@ -386,8 +425,8 @@ class GruposController extends Controller
                 })
             ]);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            \Illuminate\Support\Facades\Log::warning('Validación fallida al compartir grupo', [
+        } catch (ValidationException $e) {
+            Log::warning('Validación fallida al compartir grupo', [
                 'errors' => $e->errors()
             ]);
             
@@ -397,7 +436,7 @@ class GruposController extends Controller
             ], 422);
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Error al compartir grupo: ' . $e->getMessage());
+            Log::error('Error al compartir grupo: ' . $e->getMessage());
             
             return response()->json([
                 "message" => 500,
@@ -533,7 +572,7 @@ class GruposController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Error al obtener permisos: ' . $e->getMessage());
+            Log::error('Error al obtener permisos: ' . $e->getMessage());
             
             return response()->json([
                 "message" => 500,
@@ -568,7 +607,7 @@ class GruposController extends Controller
             $grupo->permission_type = $request->permission_type;
             $grupo->save();
 
-            \Illuminate\Support\Facades\Log::info('Tipo de permiso actualizado', [
+            Log::info('Tipo de permiso actualizado', [
                 'grupo_id' => $grupo->id,
                 'old_type' => $oldType,
                 'new_type' => $grupo->permission_type,
@@ -581,14 +620,14 @@ class GruposController extends Controller
                 "permission_type" => $grupo->permission_type
             ]);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'message' => 422,
                 'errors' => $e->errors()
             ], 422);
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Error al actualizar tipo de permiso: ' . $e->getMessage());
+            Log::error('Error al actualizar tipo de permiso: ' . $e->getMessage());
             
             return response()->json([
                 "message" => 500,
@@ -632,7 +671,7 @@ class GruposController extends Controller
                 'permission_level' => $request->permission_level
             ]);
 
-            \Illuminate\Support\Facades\Log::info('Permiso de usuario actualizado', [
+            Log::info('Permiso de usuario actualizado', [
                 'grupo_id' => $grupoId,
                 'user_id' => $userId,
                 'permission_level' => $request->permission_level,
@@ -644,15 +683,50 @@ class GruposController extends Controller
                 "message_text" => "Permiso actualizado correctamente",
                 "permission_level" => $request->permission_level
             ]);
+            
+            // Actualizar el nivel de permiso en la tabla pivote
+            $grupo->sharedUsers()->updateExistingPivot($userId, [
+                'permission_level' => $request->permission_level
+            ]);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
+            // ✅ CREAR NOTIFICACIÓN EN EL SISTEMA para el usuario afectado
+            try {
+                $propietario = auth()->user();
+                $afectado = User::find($userId);
+                
+                if ($afectado) {
+                    NotificationService::permisosCambiados(
+                        $grupo,
+                        $propietario,
+                        $afectado,
+                        $request->permission_level
+                    );
+                    
+                    Log::info('✅ Notificación de cambio de permisos enviada', [
+                        'grupo_id' => $grupo->id,
+                        'user_id' => $userId,
+                        'new_permission' => $request->permission_level
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('⚠️ No se pudo crear notificación de cambio de permisos: ' . $e->getMessage());
+            }
+
+            Log::info('Permiso de usuario actualizado', [
+                'grupo_id' => $grupoId,
+                'user_id' => $userId,
+                'permission_level' => $request->permission_level,
+                'updated_by' => auth()->id()
+            ]);
+
+        } catch (ValidationException $e) {
             return response()->json([
                 'message' => 422,
                 'errors' => $e->errors()
             ], 422);
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Error al actualizar permiso de usuario: ' . $e->getMessage());
+            Log::error('Error al actualizar permiso de usuario: ' . $e->getMessage());
             
             return response()->json([
                 "message" => 500,
@@ -684,7 +758,7 @@ class GruposController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Error al verificar permisos: ' . $e->getMessage());
+            Log::error('Error al verificar permisos: ' . $e->getMessage());
             
             return response()->json([
                 "message" => 500,
@@ -727,7 +801,7 @@ class GruposController extends Controller
                 }
             }
 
-            \Illuminate\Support\Facades\Log::info('Permisos actualizados en lote', [
+            Log::info('Permisos actualizados en lote', [
                 'grupo_id' => $id,
                 'users_updated' => $updated,
                 'updated_by' => auth()->id()
@@ -739,14 +813,14 @@ class GruposController extends Controller
                 "users_updated" => $updated
             ]);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'message' => 422,
                 'errors' => $e->errors()
             ], 422);
 
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Error al actualizar permisos en lote: ' . $e->getMessage());
+            Log::error('Error al actualizar permisos en lote: ' . $e->getMessage());
             
             return response()->json([
                 "message" => 500,

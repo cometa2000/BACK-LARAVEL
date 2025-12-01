@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Spatie\Permission\Models\Role;
 use App\Models\Configuration\Sucursale;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class UserAccessController extends Controller
@@ -229,6 +230,27 @@ class UserAccessController extends Controller
         }
 
         $user = User::findOrFail($id);
+
+        // 🔒 NUEVO: Validar contraseña actual si se está actualizando el propio perfil
+        $isOwnProfile = auth('api')->check() && auth('api')->user()->id == $id;
+        
+        if ($isOwnProfile && $request->password) {
+            // Si el usuario está cambiando su propia contraseña, verificar la contraseña actual
+            if (!$request->has('current_password')) {
+                return response()->json([
+                    "message" => 403,
+                    "message_text" => "Debes proporcionar tu contraseña actual para cambiarla"
+                ]);
+            }
+            
+            // Verificar que la contraseña actual sea correcta
+            if (!Hash::check($request->current_password, $user->password)) {
+                return response()->json([
+                    "message" => 403,
+                    "message_text" => "La contraseña actual es incorrecta"
+                ]);
+            }
+        }
 
         // ✅ ACTUALIZADO: Ya no procesamos archivo de imagen, solo recibimos el nombre del avatar
         // Si se recibe un avatar, simplemente lo guardamos como está (ejemplo: "3.png")

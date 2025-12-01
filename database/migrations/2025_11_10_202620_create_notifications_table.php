@@ -11,22 +11,29 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('activities', function (Blueprint $table) {
+        Schema::create('notifications', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('user_id'); // Usuario que realizó la acción
-            $table->unsignedBigInteger('tarea_id'); // Tarea relacionada
-            $table->string('type'); // tipo: 'comment', 'status_change', 'assignment', 'attachment', 'due_date', 'checklist'
-            $table->text('description'); // Descripción de la actividad
-            $table->json('metadata')->nullable(); // Datos adicionales (anterior_estado, nuevo_estado, etc.)
+            $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('from_user_id')->nullable();
+            $table->unsignedBigInteger('tarea_id')->nullable();
+            $table->unsignedBigInteger('grupo_id')->nullable();
+            $table->string('type');
+            $table->string('title');
+            $table->text('message');
+            $table->json('data')->nullable();
+            $table->boolean('is_read')->default(false);
+            $table->timestamp('read_at')->nullable();
             $table->timestamps();
+            $table->softDeletes();
 
             // Foreign keys
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('from_user_id')->references('id')->on('users')->onDelete('set null');
             $table->foreign('tarea_id')->references('id')->on('tareas')->onDelete('cascade');
-            
-            // Índices para mejorar el rendimiento
-            $table->index('tarea_id');
-            $table->index('user_id');
+            $table->foreign('grupo_id')->references('id')->on('grupos')->onDelete('cascade');
+
+            // Índices
+            $table->index(['user_id', 'is_read']);
             $table->index('created_at');
         });
     }
@@ -36,6 +43,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('activities');
+        Schema::dropIfExists('notifications');
     }
 };

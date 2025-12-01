@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class NotificationController extends Controller
 {
@@ -15,12 +16,20 @@ class NotificationController extends Controller
     {
         try {
             $user = Auth::user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Usuario no autenticado'
+                ], 401);
+            }
+
             $limit = $request->input('limit', 20);
             $unreadOnly = $request->input('unread_only', false);
 
             $query = Notification::with([
                 'fromUser:id,name,surname,avatar',
-                'tarea:id,title',
+                'tarea:id,name',
                 'grupo:id,name'
             ])->where('user_id', $user->id);
 
@@ -33,12 +42,12 @@ class NotificationController extends Controller
                     'id' => $notification->id,
                     'from_user' => $notification->fromUser ? [
                         'id' => $notification->fromUser->id,
-                        'name' => $notification->fromUser->name . ' ' . $notification->fromUser->surname,
-                        'avatar' => $notification->fromUser->avatar,
+                        'name' => trim(($notification->fromUser->name ?? '') . ' ' . ($notification->fromUser->surname ?? '')),
+                        'avatar' => $notification->fromUser->avatar ?? '/media/avatars/blank.png',
                     ] : null,
                     'tarea' => $notification->tarea ? [
                         'id' => $notification->tarea->id,
-                        'title' => $notification->tarea->title,
+                        'title' => $notification->tarea->name,
                     ] : null,
                     'grupo' => $notification->grupo ? [
                         'id' => $notification->grupo->id,
@@ -48,8 +57,8 @@ class NotificationController extends Controller
                     'title' => $notification->title,
                     'message' => $notification->message,
                     'data' => $notification->data,
-                    'icon' => $notification->icon,
-                    'color' => $notification->color,
+                    'icon' => $notification->getIcon(),
+                    'color' => $notification->getColor(),
                     'is_read' => $notification->is_read,
                     'read_at' => $notification->read_at ? $notification->read_at->format('Y-m-d H:i:s') : null,
                     'created_at' => $notification->created_at->diffForHumans(),
@@ -67,6 +76,10 @@ class NotificationController extends Controller
                 'unread_count' => $unreadCount,
             ]);
         } catch (\Exception $e) {
+            Log::error('Error al obtener notificaciones: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Error al obtener notificaciones',
@@ -82,6 +95,14 @@ class NotificationController extends Controller
     {
         try {
             $user = Auth::user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'unread_count' => 0,
+                ], 401);
+            }
+
             $unreadCount = Notification::where('user_id', $user->id)->unread()->count();
 
             return response()->json([
@@ -89,6 +110,8 @@ class NotificationController extends Controller
                 'unread_count' => $unreadCount,
             ]);
         } catch (\Exception $e) {
+            Log::error('Error al obtener contador: ' . $e->getMessage());
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Error al obtener contador',
@@ -104,6 +127,14 @@ class NotificationController extends Controller
     {
         try {
             $user = Auth::user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Usuario no autenticado'
+                ], 401);
+            }
+
             $notification = Notification::where('user_id', $user->id)->findOrFail($id);
 
             $notification->markAsRead();
@@ -113,6 +144,8 @@ class NotificationController extends Controller
                 'message' => 'Notificación marcada como leída'
             ]);
         } catch (\Exception $e) {
+            Log::error('Error al marcar notificación: ' . $e->getMessage());
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Error al marcar notificación',
@@ -129,6 +162,13 @@ class NotificationController extends Controller
         try {
             $user = Auth::user();
             
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Usuario no autenticado'
+                ], 401);
+            }
+            
             Notification::where('user_id', $user->id)
                 ->unread()
                 ->update([
@@ -141,6 +181,8 @@ class NotificationController extends Controller
                 'message' => 'Todas las notificaciones marcadas como leídas'
             ]);
         } catch (\Exception $e) {
+            Log::error('Error al marcar notificaciones: ' . $e->getMessage());
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Error al marcar notificaciones',
@@ -156,6 +198,14 @@ class NotificationController extends Controller
     {
         try {
             $user = Auth::user();
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Usuario no autenticado'
+                ], 401);
+            }
+
             $notification = Notification::where('user_id', $user->id)->findOrFail($id);
 
             $notification->delete();
@@ -165,6 +215,8 @@ class NotificationController extends Controller
                 'message' => 'Notificación eliminada exitosamente'
             ]);
         } catch (\Exception $e) {
+            Log::error('Error al eliminar notificación: ' . $e->getMessage());
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Error al eliminar notificación',
@@ -181,6 +233,13 @@ class NotificationController extends Controller
         try {
             $user = Auth::user();
             
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Usuario no autenticado'
+                ], 401);
+            }
+            
             Notification::where('user_id', $user->id)
                 ->read()
                 ->delete();
@@ -190,6 +249,8 @@ class NotificationController extends Controller
                 'message' => 'Notificaciones leídas eliminadas exitosamente'
             ]);
         } catch (\Exception $e) {
+            Log::error('Error al eliminar notificaciones: ' . $e->getMessage());
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Error al eliminar notificaciones',

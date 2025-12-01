@@ -6,11 +6,12 @@ use App\Models\User;
 use App\Models\tasks\Grupos;
 use App\Models\tasks\Tareas;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Notification extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'user_id',
@@ -113,12 +114,18 @@ class Notification extends Model
 
     /**
      * Obtener el ícono según el tipo de notificación
+     * ✅ INCLUYE TODOS LOS TIPOS
      */
-    public function getIconAttribute()
+    public function getIcon()
     {
         $icons = [
             'task_assigned' => 'profile-user',
             'task_completed' => 'verify',
+            'group_created' => 'element-11',
+            'group_shared_owner' => 'security-user',
+            'group_shared_invited' => 'security-user',
+            'task_due_soon' => 'calendar',
+            'task_overdue' => 'calendar',
             'comment' => 'message-text-2',
             'mention' => 'notification-status',
             'due_date_reminder' => 'calendar',
@@ -131,12 +138,18 @@ class Notification extends Model
 
     /**
      * Obtener el color según el tipo de notificación
+     * ✅ INCLUYE TODOS LOS TIPOS
      */
-    public function getColorAttribute()
+    public function getColor()
     {
         $colors = [
             'task_assigned' => 'success',
             'task_completed' => 'success',
+            'group_created' => 'info',
+            'group_shared_owner' => 'info',
+            'group_shared_invited' => 'primary',
+            'task_due_soon' => 'warning',
+            'task_overdue' => 'danger',
             'comment' => 'primary',
             'mention' => 'warning',
             'due_date_reminder' => 'danger',
@@ -145,22 +158,5 @@ class Notification extends Model
         ];
 
         return $colors[$this->type] ?? 'secondary';
-    }
-
-    /**
-     * Método estático para crear una notificación
-     */
-    public static function notify($userId, $type, $title, $message, $data = [])
-    {
-        return self::create([
-            'user_id' => $userId,
-            'from_user_id' => $data['from_user_id'] ?? null,
-            'tarea_id' => $data['tarea_id'] ?? null,
-            'grupo_id' => $data['grupo_id'] ?? null,
-            'type' => $type,
-            'title' => $title,
-            'message' => $message,
-            'data' => $data,
-        ]);
     }
 }

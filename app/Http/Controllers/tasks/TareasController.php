@@ -10,6 +10,7 @@ use App\Models\tasks\Actividad;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Mail;
+use App\Services\NotificationService; 
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class TareasController extends Controller
@@ -798,10 +799,28 @@ class TareasController extends Controller
                             )
                         );
                         
-                        Log::info('✅ Correo enviado a:', [
+                        // 🆕 Crear notificación en el sistema
+                        NotificationService::tareaAsignada(
+                            $usuario->id,                    // userId - ID del usuario asignado
+                            auth()->id(),                    // fromUserId - ID del usuario que asigna
+                            $tarea->id,                      // tareaId - ID de la tarea
+                            $grupo->id,                      // grupoId - ID del grupo
+                            $tarea->name,                    // tareaNombre - Nombre de la tarea
+                            $grupo->name,                    // grupoNombre - Nombre del grupo
+                            $nombreAsignador                 // asignadorNombre - Nombre del asignador
+                        );
+
+                        Log::info('✅ Correo y notificación enviados a:', [
                             'email' => $usuario->email,
-                            'nombre' => $nombreUsuario
+                            'nombre' => $nombreUsuario,
+                            'tarea_id' => $tarea->id,
+                            'grupo_id' => $grupo->id
                         ]);
+                        
+                        // Log::info('✅ Correo y notificación enviados a:', [
+                        //     'email' => $usuario->email,
+                        //     'nombre' => $nombreUsuario
+                        // ]);
                         
                     } catch (\Exception $emailError) {
                         Log::error('❌ Error al enviar correo a ' . $usuario->email, [
@@ -1079,9 +1098,20 @@ class TareasController extends Controller
                         )
                     );
                     
+                    // 🆕 Crear notificación en el sistema
+                    NotificationService::tareaCompletada(
+                        $tarea->user->id,
+                        auth()->id(),
+                        $tarea->id,
+                        $grupo->id,
+                        $tarea->name,
+                        $grupo->name,
+                        $nombreCompletador
+                    );
+                    
                     $correosEnviados->push($tarea->user->email);
                     
-                    Log::info('✅ Correo enviado al creador:', [
+                    Log::info('✅ Correo y notificación enviados al creador:', [
                         'email' => $tarea->user->email,
                         'nombre' => $nombreCreador
                     ]);
@@ -1124,6 +1154,17 @@ class TareasController extends Controller
                                 $lista,
                                 false // No es el creador
                             )
+                        );
+
+                        // 🆕 Crear notificación en el sistema
+                        NotificationService::tareaCompletada(
+                            $miembro->id,
+                            auth()->id(),
+                            $tarea->id,
+                            $grupo->id,
+                            $tarea->name,
+                            $grupo->name,
+                            $nombreCompletador
                         );
                         
                         $correosEnviados->push($miembro->email);

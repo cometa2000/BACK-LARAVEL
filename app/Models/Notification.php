@@ -91,26 +91,9 @@ class Notification extends Model
     }
 
     /**
-     * Marcar como leída
+     * ❌ ELIMINADO: El método markAsRead() que podría estar causando problemas
+     * Ahora se hace directamente en el controlador con update()
      */
-    public function markAsRead()
-    {
-        $this->update([
-            'is_read' => true,
-            'read_at' => now(),
-        ]);
-    }
-
-    /**
-     * Marcar como no leída
-     */
-    public function markAsUnread()
-    {
-        $this->update([
-            'is_read' => false,
-            'read_at' => null,
-        ]);
-    }
 
     /**
      * Obtener el ícono según el tipo de notificación

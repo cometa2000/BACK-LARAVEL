@@ -161,6 +161,9 @@ Route::group([
     Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::delete('/notifications/delete-read', [NotificationController::class, 'deleteAllRead']);
+    
+    // 🆕 NUEVA RUTA PARA DEBUGGING
+    Route::get('/notifications/debug', [NotificationController::class, 'debug']);
 
     // ========================================
     // RUTAS DE PERFIL (Protegidas con JWT)

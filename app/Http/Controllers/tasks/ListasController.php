@@ -80,15 +80,17 @@ class ListasController extends Controller
                                     'name' => $user['name'],
                                     'surname' => $user['surname'] ?? '',
                                     'email' => $user['email'],
-                                    'avatar' => isset($user['avatar']) && $user['avatar'] 
-                                        ? url('storage/' . $user['avatar']) 
-                                        : null,
+                                    // 🟢 TODO LO QUE NECESITAMOS ES DEVOLVER SOLO EL NOMBRE DEL AVATAR
+                                    //     NO la URL del backend.
+                                    'avatar' => $user['avatar'] ?: null,
                                 ];
                             }, $tarea['assigned_users']);
-                            unset($tarea['assigned_users']); // Eliminar el campo original
+
+                            unset($tarea['assigned_users']);
                         } else {
                             $tarea['assigned_members'] = [];
                         }
+
                         
                         // Agregar contador de comentarios
                         $tarea['comentarios_count'] = isset($tarea['comentarios']) 

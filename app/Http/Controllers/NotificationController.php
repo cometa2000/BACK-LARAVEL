@@ -25,37 +25,33 @@ class NotificationController extends Controller
                 ], 401);
             }
 
-            // 🔍 DEBUG: Verificar qué usuario está autenticado
-            Log::info('🔍 Usuario autenticado:', ['user_id' => $user->id, 'name' => $user->name]);
-
             $limit = $request->input('limit', 20);
-            $unreadOnly = $request->input('unread_only', false);
+            $unreadOnly = filter_var($request->input('unread_only', false), FILTER_VALIDATE_BOOLEAN);
 
-            // 🔍 DEBUG: Contar notificaciones en BD para este usuario
-            $totalInDB = Notification::where('user_id', $user->id)->count();
-            $unreadInDB = Notification::where('user_id', $user->id)->where('is_read', false)->count();
-            Log::info('🔍 Notificaciones en BD:', [
-                'total' => $totalInDB,
-                'unread' => $unreadInDB,
-                'user_id' => $user->id
-            ]);
-
-            // ✅ CORRECCIÓN: No usar withTrashed() para incluir eliminadas, solo las activas
+            // 🔥 Consulta corregida:
+            // - Siempre obtener TODAS las notificaciones (leídas y no leídas)
+            // - Aplicar limit SOLO SI unread_only = true
             $query = Notification::with([
-                'fromUser:id,name,surname,avatar',
-                'tarea:id,name',
-                'grupo:id,name'
-            ])->where('user_id', $user->id);
+                    'fromUser:id,name,surname,avatar',
+                    'tarea:id,name',
+                    'grupo:id,name'
+                ])
+                ->where('user_id', $user->id)
+                ->orderBy('created_at', 'desc');
 
+            // Si solo quiere no leídas, aplicamos filtro y límite
             if ($unreadOnly) {
-                $query->where('is_read', false);
+                $query->where('is_read', false)
+                    ->limit($limit);
             }
 
-            // ✅ Ordenar por fecha de creación descendente y limitar
-            $notifications = $query->orderBy('created_at', 'desc')
-                                  ->limit($limit)
-                                  ->get()
-                                  ->map(function($notification) {
+            // 🔥 Si NO pidió unread_only, devolvemos TODAS las notificaciones sin límite
+            $notifications = (!$unreadOnly)
+                ? $query->get()
+                : $query->get();
+
+            // Mapeo
+            $notifications = $notifications->map(function($notification) {
                 return [
                     'id' => $notification->id,
                     'from_user' => $notification->fromUser ? [
@@ -84,15 +80,10 @@ class NotificationController extends Controller
                 ];
             });
 
-            // Contar notificaciones no leídas
+            // Contador de no leídas
             $unreadCount = Notification::where('user_id', $user->id)
-                                      ->where('is_read', false)
-                                      ->count();
-
-            Log::info('✅ Notificaciones devueltas:', [
-                'count' => $notifications->count(),
-                'unread_count' => $unreadCount
-            ]);
+                                    ->where('is_read', false)
+                                    ->count();
 
             return response()->json([
                 'success' => true,
@@ -101,9 +92,7 @@ class NotificationController extends Controller
                 'unread_count' => $unreadCount,
             ]);
         } catch (\Exception $e) {
-            Log::error('❌ Error al obtener notificaciones: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
-            ]);
+            Log::error('❌ Error al obtener notificaciones: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,
@@ -112,6 +101,7 @@ class NotificationController extends Controller
             ], 500);
         }
     }
+
 
     /**
      * Obtener el contador de notificaciones no leídas

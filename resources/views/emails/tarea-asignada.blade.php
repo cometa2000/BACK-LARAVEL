@@ -73,17 +73,6 @@
             </div>
             @endif
 
-            {{-- @if($tarea->priority)
-            <!-- PRIORIDAD -->
-            <div style="font-size:18px; font-weight:bold; color:#1e293b; display:flex; align-items:center; margin-bottom:8px;">
-                <img src="https://img.icons8.com/ios/48/f59e0b/flag.png" style="width:26px; margin-right:10px;">
-                Prioridad
-            </div>
-            <div style="background:#fef3c7; border-radius:12px; padding:20px; border:1px solid #fde68a; margin-bottom:30px; line-height:1.6;">
-                {{ $tarea->priority == 'high' ? 'Alta' : ($tarea->priority == 'medium' ? 'Media' : 'Baja') }}
-            </div>
-            @endif --}}
-
             <!-- REMINDER BOX -->
             <div style="background:#fef3c7; border-radius:12px; padding:20px; margin-bottom:25px; border-left:4px solid #f59e0b;">
                 <table cellpadding="0" cellspacing="0">
@@ -102,7 +91,7 @@
 
             <!-- BUTTON CTA -->
             <div style="text-align:center; margin-top:10px; margin-bottom:50px;">
-                <a href="{{ $urlTarea }}" 
+                <a href="https://crmbbm.preubasbbm.com/tasks/tareas/tablero/{{ $grupo->id }}" 
                    style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); padding:14px 28px; border-radius:8px; color:white; font-weight:bold; text-decoration:none; box-shadow:0 4px 12px rgba(59,130,246,0.6); display:inline-block;">
                     <img src="https://img.icons8.com/ios/48/ffffff/external-link.png" style="width:18px; vertical-align:middle; margin-right:8px;">
                     Ver tarea completa

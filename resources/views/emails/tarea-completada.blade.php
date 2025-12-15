@@ -32,14 +32,6 @@
                 @endif
             </div>
 
-            <!-- SUCCESS BANNER -->
-            {{-- <div style="background:linear-gradient(135deg, #d1fae5, #a7f3d0); border-radius:14px; padding:28px; margin-bottom:25px; text-align:center; border:2px solid #6ee7b7;">
-                <img src="https://img.icons8.com/ios/64/059669/confetti.png" style="width:48px; margin-bottom:10px;">
-                <div style="color:#065f46; font-size:18px; font-weight:700;">
-                    ¡Excelente trabajo en equipo!
-                </div>
-            </div> --}}
-
             <!-- TASK INFO -->
             <div style="font-size:18px; font-weight:bold; color:#1e293b; display:flex; align-items:center; margin-bottom:8px;">
                 <img src="https://img.icons8.com/ios/48/10b981/note.png" style="width:26px; margin-right:10px;">
@@ -137,7 +129,7 @@
 
             <!-- BUTTON CTA -->
             <div style="text-align:center; margin-top:10px; margin-bottom:50px;">
-                <a href="{{ $urlTarea }}" 
+                <a href="https://crmbbm.preubasbbm.com/tasks/tareas/tablero/{{ $grupo->id }}" 
                    style="background: linear-gradient(135deg, #10b981, #059669); padding:14px 28px; border-radius:8px; color:white; font-weight:bold; text-decoration:none; box-shadow:0 4px 12px rgba(16,185,129,0.6); display:inline-block;">
                     <img src="https://img.icons8.com/ios/48/ffffff/visible.png" style="width:18px; vertical-align:middle; margin-right:8px;">
                     Ver Detalles

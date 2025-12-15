@@ -128,7 +128,7 @@
                             <table width="100%" cellpadding="0" cellspacing="0">
                                 <tr>
                                     <td align="center" style="padding: 20px 0;">
-                                        <a href="{{ env('APP_URL') }}/tasks/tareas/tablero/{{ $tarea->grupo_id }}" 
+                                        <a href="https://crmbbm.preubasbbm.com/tasks/tareas/tablero/{{ $tarea->grupo_id }}" 
                                            style="display: inline-block; background: linear-gradient(45deg, #ff9800, #f57c00); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.4); transition: all 0.3s ease;">
                                             📋 Ver Tarea Completa
                                         </a>

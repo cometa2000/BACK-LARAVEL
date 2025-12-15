@@ -115,7 +115,7 @@
 
             <!-- BUTTON CTA -->
             <div style="text-align:center; margin-top:10px; margin-bottom:40px;">
-                <a href="{{ env('APP_URL') }}/tasks/grupos/list" 
+                <a href="https://crmbbm.preubasbbm.com/tasks/grupos/list" 
                    style="background: linear-gradient(135deg, #667eea, #764ba2); padding:14px 32px; border-radius:8px; color:white; font-weight:bold; text-decoration:none; box-shadow:0 4px 12px rgba(102,126,234,0.6); display:inline-block;">
                     <img src="https://img.icons8.com/material-rounded/96/ffffff/login-rounded-right.png" style="width:18px; vertical-align:middle; margin-right:8px;">
                     Ir a Mis Grupos

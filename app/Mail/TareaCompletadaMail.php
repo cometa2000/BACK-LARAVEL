@@ -35,7 +35,7 @@ class TareaCompletadaMail extends Mailable
         $this->esCreador = $esCreador;
         
         // URL directa al tablero con la tarea
-        $this->urlTarea = env('APP_URL') . '/tasks/tareas/tablero/' . $grupo->id;
+        $this->urlTarea = 'https://crmbbm.preubasbbm.com/tasks/tareas/tablero/' . $grupo->id;
     }
 
     /**

@@ -136,7 +136,7 @@
                             <table width="100%" cellpadding="0" cellspacing="0">
                                 <tr>
                                     <td align="center" style="padding: 20px 0;">
-                                        <a href="{{ env('APP_URL') }}/tasks/tareas/tablero/{{ $tarea->grupo_id }}" 
+                                        <a href="https://crmbbm.preubasbbm.com/tasks/tareas/tablero/{{ $tarea->grupo_id }}" 
                                            style="display: inline-block; background: linear-gradient(45deg, #f44336, #d32f2f); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(244, 67, 54, 0.4); transition: all 0.3s ease;">
                                             📋 Ir a la Tarea
                                         </a>

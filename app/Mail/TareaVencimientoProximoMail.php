@@ -31,6 +31,9 @@ class TareaVencimientoProximoMail extends Mailable
     /**
      * Get the message envelope.
      */
+
+
+    
     public function envelope(): Envelope
     {
         $subject = $this->diasRestantes == 1 

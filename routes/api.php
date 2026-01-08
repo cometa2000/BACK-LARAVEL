@@ -13,6 +13,7 @@ use App\Http\Controllers\tasks\ListasController;
 use App\Http\Controllers\tasks\TareasController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\tasks\EtiquetasController;
+use App\Http\Controllers\tasks\WorkspaceController;
 use App\Http\Controllers\tasks\ChecklistsController;
 use App\Http\Controllers\tasks\ComentariosController;
 use App\Http\Controllers\tasks\TareaAdjuntosController;
@@ -27,11 +28,6 @@ use App\Http\Controllers\Configuration\SucursaleDeliverieController;
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-|
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group. Make something great!
-|
 */
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
@@ -39,10 +35,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 });
 
 Route::group([
- 
-    // 'middleware' => 'auth:api',
     'prefix' => 'auth',
-//    'middleware' => ['auth:api'],//,'permission:publish articles|edit articles'
 ], function ($router) {
     Route::post('/register', [AuthController::class, 'register'])->name('register');
     Route::post('/login', [AuthController::class, 'login'])->name('login');
@@ -54,68 +47,79 @@ Route::group([
 Route::group([
     'middleware' => 'auth:api',
 ], function ($router) {
-    Route::resource("roles",RolePermissionController::class); 
+    
+    // ========================================
+    // 🏢 WORKSPACES (NUEVO)
+    // ========================================
+    Route::prefix('workspaces')->group(function () {
+        Route::get('/', [WorkspaceController::class, 'index']); // Listar todos
+        Route::post('/', [WorkspaceController::class, 'store']); // Crear
+        Route::get('/{id}', [WorkspaceController::class, 'show']); // Ver uno
+        Route::put('/{id}', [WorkspaceController::class, 'update']); // Actualizar
+        Route::delete('/{id}', [WorkspaceController::class, 'destroy']); // Eliminar
+        Route::get('/{id}/stats', [WorkspaceController::class, 'stats']); // Estadísticas
+        Route::get('/{id}/grupos', [WorkspaceController::class, 'getWorkspaceGroups']); // Grupos del workspace
+    });
 
-    Route::get('/users/search', [GruposController::class, 'searchUsers']);      
-
+    // ========================================
+    // ROLES Y USUARIOS
+    // ========================================
+    Route::resource("roles", RolePermissionController::class);
+    Route::get('/users/search', [GruposController::class, 'searchUsers']);
     Route::post('/users/{id}', [UserAccessController::class, 'update']);
     Route::get("users/config", [UserAccessController::class, 'config']);
-    Route::resource("users",UserAccessController::class); 
+    Route::resource("users", UserAccessController::class);
 
-    // Route::resource('task');
+    // ========================================
+    // CONFIGURACIÓN
+    // ========================================
+    Route::resource("sucursales", SucusaleController::class);
+    Route::resource("warehouses", WarehouseController::class);
+    Route::resource("sucursale_deliveries", SucursaleDeliverieController::class);
+    Route::resource("method_payments", MethodPaymentController::class);
+    Route::resource("client_segments", ClientSegmentController::class);
 
-    Route::resource("sucursales",SucusaleController::class); 
-    Route::resource("warehouses",WarehouseController::class); 
-    Route::resource("sucursale_deliveries",SucursaleDeliverieController::class); 
-    Route::resource("method_payments",MethodPaymentController::class); 
-    Route::resource("client_segments",ClientSegmentController::class); 
-
-    // Route::post('/tareas/{id}', [TareasController::class, 'update']);
-    Route::get("tareas/config",[TareasController::class, 'config']);
-    Route::post('/tareas/{id}/move', [TareasController::class, 'move']);
-    Route::resource("tareas",TareasController::class);
-
-    Route::get('/tareas/{tareaId}/timeline', [ComentariosController::class, 'index']);
-    Route::post('/tareas/{tareaId}/comentarios', [ComentariosController::class, 'store']);
-    Route::put('/tareas/{tareaId}/comentarios/{comentarioId}', [ComentariosController::class, 'update']);
-    Route::delete('/tareas/{tareaId}/comentarios/{comentarioId}', [ComentariosController::class, 'destroy']);
-
+    // ========================================
+    // 📁 GRUPOS (ACTUALIZADO CON WORKSPACES)
+    // ========================================
+    // Funcionalidades básicas
+    Route::resource("grupos", GruposController::class);
+    
+    // Funcionalidades adicionales
     Route::post('/grupos/{id}/toggle-star', [GruposController::class, 'toggleStar']);
     Route::post('/grupos/{id}/share', [GruposController::class, 'share']);
     Route::delete('/grupos/{grupoId}/unshare/{userId}', [GruposController::class, 'unshare']);
-    // Agregar esta ruta en api.php dentro del grupo con middleware auth:api
     Route::get('/grupos/{id}/shared-users', [GruposController::class, 'getSharedUsers']);
-    Route::resource("grupos", GruposController::class);
-
-    // ========== RUTAS PARA DOCUMENTOS ==========
-    // Route::get("documentos/config",[DocumentosController::class, 'config']);
-    // Route::resource("documentos",DocumentosController::class);
-    Route::get('/documentos', [DocumentosController::class, 'index']);
-    Route::post('/documentos', [DocumentosController::class, 'store']);
-    Route::get('/documentos/config', [DocumentosController::class, 'config']);
-    Route::put('/documentos/{id}', [DocumentosController::class, 'update']);
-    Route::delete('/documentos/{id}', [DocumentosController::class, 'destroy']);
-
-    // ========== RUTAS PARA CARPETAS ==========
-    Route::get('/documentos/tree', [DocumentosController::class, 'getTree']);
-    Route::post('/documentos/folder', [DocumentosController::class, 'createFolder']);
-    Route::get('/documentos/folder/{id}', [DocumentosController::class, 'getFolderContents']);
-    Route::post('/documentos/{id}/move', [DocumentosController::class, 'move']);
-
-    // ========== NUEVAS RUTAS PARA DESCARGA Y VISUALIZACIÓN ==========
-    Route::get('/documentos/{id}/download', [DocumentosController::class, 'download']);
-    Route::get('/documentos/{id}/info', [DocumentosController::class, 'getDocumentInfo']);
-
-    Route::post('listas/reorder', [ListasController::class, 'reorder']);
-    Route::apiResource('listas',ListasController::class);
-
-    // Rutas de permisos de grupos (solo para propietarios)
+    
+    // 🆕 NUEVO: Mover grupo a workspace
+    Route::post('/grupos/{id}/move', [GruposController::class, 'moveToWorkspace']);
+    
+    // Permisos de grupos
     Route::get('/grupos/{id}/permissions', [GruposController::class, 'getPermissions']);
     Route::post('/grupos/{id}/permissions/type', [GruposController::class, 'updatePermissionType']);
     Route::post('/grupos/{grupoId}/permissions/user/{userId}', [GruposController::class, 'updateUserPermission']);
     Route::post('/grupos/{id}/permissions/batch', [GruposController::class, 'updateBatchPermissions']);
     Route::get('/grupos/{id}/check-write-access', [GruposController::class, 'checkWriteAccess']);
-    
+
+    // ========================================
+    // 📋 LISTAS
+    // ========================================
+    Route::post('listas/reorder', [ListasController::class, 'reorder']);
+    Route::apiResource('listas', ListasController::class);
+
+    // ========================================
+    // ✅ TAREAS
+    // ========================================
+    Route::get("tareas/config", [TareasController::class, 'config']);
+    Route::post('/tareas/{id}/move', [TareasController::class, 'move']);
+    Route::resource("tareas", TareasController::class);
+
+    // Timeline y comentarios
+    Route::get('/tareas/{tareaId}/timeline', [ComentariosController::class, 'index']);
+    Route::post('/tareas/{tareaId}/comentarios', [ComentariosController::class, 'store']);
+    Route::put('/tareas/{tareaId}/comentarios/{comentarioId}', [ComentariosController::class, 'update']);
+    Route::delete('/tareas/{tareaId}/comentarios/{comentarioId}', [ComentariosController::class, 'destroy']);
+
     // Etiquetas
     Route::get('/tareas/{tareaId}/etiquetas', [EtiquetasController::class, 'index']);
     Route::post('/tareas/{tareaId}/etiquetas', [EtiquetasController::class, 'store']);
@@ -138,22 +142,40 @@ Route::group([
     Route::post('/tareas/{tareaId}/adjuntos', [TareaAdjuntosController::class, 'store']);
     Route::delete('/tareas/{tareaId}/adjuntos/{adjuntoId}', [TareaAdjuntosController::class, 'destroy']);
 
-    // Rutas de miembros de tareas
+    // Miembros de tareas
     Route::post('/tareas/{tarea}/assign-members', [TareasController::class, 'assignMembers']);
     Route::get('/tareas/{tarea}/members', [TareasController::class, 'getMembers']);
     Route::delete('/tareas/{tarea}/unassign-member/{user}', [TareasController::class, 'unassignMember']);
 
     // ========================================
-    // RUTAS DE ACTIVIDADES
+    // 📄 DOCUMENTOS
+    // ========================================
+    Route::get('/documentos', [DocumentosController::class, 'index']);
+    Route::post('/documentos', [DocumentosController::class, 'store']);
+    Route::get('/documentos/config', [DocumentosController::class, 'config']);
+    Route::put('/documentos/{id}', [DocumentosController::class, 'update']);
+    Route::delete('/documentos/{id}', [DocumentosController::class, 'destroy']);
+
+    // Carpetas
+    Route::get('/documentos/tree', [DocumentosController::class, 'getTree']);
+    Route::post('/documentos/folder', [DocumentosController::class, 'createFolder']);
+    Route::get('/documentos/folder/{id}', [DocumentosController::class, 'getFolderContents']);
+    Route::post('/documentos/{id}/move', [DocumentosController::class, 'move']);
+
+    // Descarga y visualización
+    Route::get('/documentos/{id}/download', [DocumentosController::class, 'download']);
+    Route::get('/documentos/{id}/info', [DocumentosController::class, 'getDocumentInfo']);
+
+    // ========================================
+    // 📊 ACTIVIDADES
     // ========================================
     Route::get('/activities', [ActivityController::class, 'index']);
     Route::get('/activities/tarea/{tareaId}', [ActivityController::class, 'getByTarea']);
     Route::post('/activities', [ActivityController::class, 'store']);
     Route::delete('/activities/{id}', [ActivityController::class, 'destroy']);
-    
-    
+
     // ========================================
-    // RUTAS DE NOTIFICACIONES
+    // 🔔 NOTIFICACIONES
     // ========================================
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/unread-count', [NotificationController::class, 'getUnreadCount']);
@@ -161,21 +183,16 @@ Route::group([
     Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::delete('/notifications/delete-read', [NotificationController::class, 'deleteAllRead']);
-    
-    // 🆕 NUEVA RUTA PARA DEBUGGING
     Route::get('/notifications/debug', [NotificationController::class, 'debug']);
 
     // ========================================
-    // RUTAS DE PERFIL (Protegidas con JWT)
+    // 👤 PERFIL
     // ========================================
     Route::get('/profile/tareas', [ProfileController::class, 'getUserTareas']);
     Route::get('/profile/documentos', [ProfileController::class, 'getUserDocumentos']);
     Route::get('/profile/stats', [ProfileController::class, 'getUserStats']);
-    
-    // ✅ NUEVO: Endpoint optimizado que devuelve todo en una sola llamada
     Route::get('/profile/complete', [ProfileController::class, 'getCompleteProfile']);
-
 });
 
-// porque OnlyOffice necesita acceder sin token
+// Ruta pública para OnlyOffice (sin token)
 Route::post('/documentos/{id}/save-callback', [DocumentosController::class, 'saveDocument']);

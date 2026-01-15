@@ -104,6 +104,15 @@ class Grupos extends Model
                     ->withTimestamps();
     }
 
+    /**
+     * ⭐ Relación many-to-many con usuarios que marcaron como favorito
+     */
+    public function favoritedByUsers()
+    {
+        return $this->belongsToMany(User::class, 'grupo_favorites', 'grupo_id', 'user_id')
+                    ->withTimestamps();
+    }
+
     // ========================================
     // SCOPES
     // ========================================
@@ -268,6 +277,38 @@ class Grupos extends Model
     public function canDelete($userId)
     {
         return $this->isOwner($userId);
+    }
+
+    /**
+     * ⭐ Verificar si el grupo está marcado como favorito por un usuario específico
+     */
+    public function isFavoritedBy($userId)
+    {
+        return $this->favoritedByUsers()->where('users.id', $userId)->exists();
+    }
+
+    /**
+     * ⭐ Marcar como favorito para un usuario
+     */
+    public function addFavorite($userId)
+    {
+        if (!$this->isFavoritedBy($userId)) {
+            $this->favoritedByUsers()->attach($userId);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * ⭐ Quitar de favoritos para un usuario
+     */
+    public function removeFavorite($userId)
+    {
+        if ($this->isFavoritedBy($userId)) {
+            $this->favoritedByUsers()->detach($userId);
+            return true;
+        }
+        return false;
     }
 
     // ========================================

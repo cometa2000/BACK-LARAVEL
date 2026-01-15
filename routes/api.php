@@ -7,10 +7,12 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ActividadController;
 use App\Http\Controllers\UserAccessController;
+use App\Http\Controllers\tasks\GanttController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\tasks\GruposController;
 use App\Http\Controllers\tasks\ListasController;
 use App\Http\Controllers\tasks\TareasController;
+use App\Http\Controllers\CalendarEventController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\tasks\EtiquetasController;
 use App\Http\Controllers\tasks\WorkspaceController;
@@ -61,6 +63,15 @@ Route::group([
         Route::get('/{id}/grupos', [WorkspaceController::class, 'getWorkspaceGroups']); // Grupos del workspace
     });
 
+
+
+    // Calendario de eventos
+    Route::get('calendar-events', [CalendarEventController::class, 'index']);
+    Route::post('calendar-events', [CalendarEventController::class, 'store']);
+    Route::get('calendar-events/{id}', [CalendarEventController::class, 'show']);
+    Route::put('calendar-events/{id}', [CalendarEventController::class, 'update']);
+    Route::delete('calendar-events/{id}', [CalendarEventController::class, 'destroy']);
+    
     // ========================================
     // ROLES Y USUARIOS
     // ========================================
@@ -146,6 +157,14 @@ Route::group([
     Route::post('/tareas/{tarea}/assign-members', [TareasController::class, 'assignMembers']);
     Route::get('/tareas/{tarea}/members', [TareasController::class, 'getMembers']);
     Route::delete('/tareas/{tarea}/unassign-member/{user}', [TareasController::class, 'unassignMember']);
+
+
+    // ========================================
+    // 📊 GANTT CHART
+    // ========================================
+    Route::get('/gantt/data', [GanttController::class, 'getGanttData']);
+    Route::get('/gantt/filter-options', [GanttController::class, 'getFilterOptions']);
+
 
     // ========================================
     // 📄 DOCUMENTOS

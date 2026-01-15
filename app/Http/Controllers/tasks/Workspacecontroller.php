@@ -45,8 +45,7 @@ class WorkspaceController extends Controller
                 })
                 ->with(['grupos' => function ($query) use ($user) {
                     $query->where('user_id', $user->id)
-                        ->with(['user', 'sharedUsers'])
-                        ->orderBy('is_starred', 'desc')
+                        ->with(['user', 'sharedUsers', 'favoritedByUsers'])
                         ->orderBy('created_at', 'desc');
                 }])
                 ->orderBy('created_at', 'desc')
@@ -54,13 +53,22 @@ class WorkspaceController extends Controller
 
             Log::info('Workspaces encontrados', ['count' => $workspaces->count()]);
 
-            // ✅ Procesar cada workspace
+            // ✅ Procesar cada workspace y ordenar grupos en memoria
             $workspaces->each(function ($workspace) use ($user) {
                 if ($workspace->grupos) {
+                    // ✅ Ordenar grupos: primero favoritos, luego por fecha
+                    $workspace->grupos = $workspace->grupos->sortByDesc(function($grupo) use ($user) {
+                        return $grupo->isFavoritedBy($user->id) ? 1 : 0;
+                    })->values();
+                    
+                    // ✅ Transformar cada grupo
                     $workspace->grupos->transform(function ($grupo) use ($user) {
                         $grupo->is_owner = $grupo->user_id == $user->id;
                         $grupo->has_write_access = $grupo->hasWriteAccess($user->id);
                         $grupo->permission_level = $grupo->getUserPermissionLevel($user->id);
+                        
+                        // ✅ Verificar si está marcado como favorito
+                        $grupo->is_starred = $grupo->isFavoritedBy($user->id);
                         
                         // ✅ Procesar imagen del grupo
                         $grupo->image = $this->processGrupoImage($grupo->image);
@@ -127,8 +135,7 @@ class WorkspaceController extends Controller
                 ->where('user_id', $user->id)
                 ->with(['grupos' => function ($query) use ($user) {
                     $query->where('user_id', $user->id)
-                        ->with(['user', 'sharedUsers'])
-                        ->orderBy('is_starred', 'desc')
+                        ->with(['user', 'sharedUsers', 'favoritedByUsers'])
                         ->orderBy('created_at', 'desc');
                 }])
                 ->first();
@@ -140,12 +147,21 @@ class WorkspaceController extends Controller
                 ], 404);
             }
 
-            // ✅ Procesar grupos
+            // ✅ Procesar y ordenar grupos
             if ($workspace->grupos) {
+                // ✅ Ordenar: primero favoritos, luego por fecha
+                $workspace->grupos = $workspace->grupos->sortByDesc(function($grupo) use ($user) {
+                    return $grupo->isFavoritedBy($user->id) ? 1 : 0;
+                })->values();
+                
                 $workspace->grupos->transform(function ($grupo) use ($user) {
                     $grupo->is_owner = $grupo->user_id == $user->id;
                     $grupo->has_write_access = $grupo->hasWriteAccess($user->id);
                     $grupo->permission_level = $grupo->getUserPermissionLevel($user->id);
+                    
+                    // ✅ Verificar si está marcado como favorito
+                    $grupo->is_starred = $grupo->isFavoritedBy($user->id);
+                    
                     $grupo->image = $this->processGrupoImage($grupo->image);
                     $grupo->shared_with = $grupo->sharedUsers;
                     
@@ -400,16 +416,24 @@ class WorkspaceController extends Controller
                 ->when($search, function($query) use ($search) {
                     return $query->where('name', 'like', '%' . $search . '%');
                 })
-                ->with(['user', 'sharedUsers'])
-                ->orderBy('is_starred', 'desc')
+                ->with(['user', 'sharedUsers', 'favoritedByUsers'])
                 ->orderBy('created_at', 'desc')
                 ->get();
+
+            // ✅ Ordenar en memoria: primero favoritos, luego por fecha
+            $grupos = $grupos->sortByDesc(function($grupo) use ($user) {
+                return $grupo->isFavoritedBy($user->id) ? 1 : 0;
+            })->values();
 
             // ✅ Procesar grupos
             $grupos->transform(function ($grupo) use ($user) {
                 $grupo->is_owner = $grupo->user_id == $user->id;
                 $grupo->has_write_access = $grupo->hasWriteAccess($user->id);
                 $grupo->permission_level = $grupo->getUserPermissionLevel($user->id);
+                
+                // ✅ Verificar si está marcado como favorito
+                $grupo->is_starred = $grupo->isFavoritedBy($user->id);
+                
                 $grupo->image = $this->processGrupoImage($grupo->image);
                 $grupo->shared_with = $grupo->sharedUsers;
                 
@@ -529,4 +553,4 @@ class WorkspaceController extends Controller
             ], 500);
         }
     }
-} 
+}

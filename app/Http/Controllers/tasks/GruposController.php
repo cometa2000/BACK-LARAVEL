@@ -22,12 +22,21 @@ class GruposController extends Controller
     public function index(Request $request)
     {
         try {
+            Log::info('=== INICIO GruposController::index ===');
+            
             $user = auth()->user();
             $search = $request->get('search', '');
             $page = $request->get('page', 1);
             
-            // Obtener grupos propios y compartidos
-            $grupos = Grupos::where(function($query) use ($user) {
+            Log::info('Usuario autenticado', [
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'search' => $search,
+                'page' => $page
+            ]);
+            
+            // ✅ SOLUCIÓN SIMPLIFICADA: Obtener todos los grupos y ordenar en memoria
+            $gruposQuery = Grupos::where(function($query) use ($user) {
                     $query->where('user_id', $user->id)
                           ->orWhereHas('sharedUsers', function($q) use ($user) {
                               $q->where('users.id', $user->id);
@@ -36,18 +45,67 @@ class GruposController extends Controller
                 ->when($search, function($query) use ($search) {
                     return $query->where('name', 'like', '%' . $search . '%');
                 })
-                ->with(['user', 'sharedUsers', 'workspace', 'listas'])
-                ->orderBy('is_starred', 'desc')
+                ->with(['user', 'sharedUsers', 'workspace', 'listas', 'favoritedByUsers'])
                 ->orderBy('created_at', 'desc')
-                ->paginate(10);
+                ->get();
+
+            // ✅ Ordenar en memoria: primero favoritos, luego por fecha
+            $gruposOrdenados = $gruposQuery->sortByDesc(function($grupo) use ($user) {
+                return $grupo->isFavoritedBy($user->id) ? 1 : 0;
+            })->values();
+
+            // ✅ Paginar manualmente
+            $page = $request->get('page', 1);
+            $perPage = 10;
+            $total = $gruposOrdenados->count();
+            $grupos = new \Illuminate\Pagination\LengthAwarePaginator(
+                $gruposOrdenados->forPage($page, $perPage),
+                $total,
+                $perPage,
+                $page,
+                ['path' => $request->url(), 'query' => $request->query()]
+            );
+
+            Log::info('Grupos encontrados', [
+                'total' => $grupos->total(),
+                'per_page' => $grupos->perPage(),
+                'current_page' => $grupos->currentPage()
+            ]);
 
             // Agregar información de permisos a cada grupo
             $grupos->getCollection()->transform(function ($grupo) use ($user) {
-                $grupo->is_owner = $grupo->user_id == $user->id;
+                $isOwner = $grupo->user_id == $user->id;
+                $permissionLevel = $grupo->getUserPermissionLevel($user->id);
+                
+                $grupo->is_owner = $isOwner;
                 $grupo->has_write_access = $grupo->hasWriteAccess($user->id);
-                $grupo->permission_level = $grupo->getUserPermissionLevel($user->id);
+                $grupo->permission_level = $permissionLevel;
+                
+                // ✅ Agregar user_permission para compatibilidad con frontend
+                $grupo->user_permission = $permissionLevel;
+                
+                // ⭐ NUEVO: Verificar si está marcado como favorito por el usuario actual
+                $grupo->is_starred = $grupo->isFavoritedBy($user->id);
+                
+                // ✅ Agregar shared_with
+                $grupo->shared_with = $grupo->sharedUsers;
+                
+                Log::info('Grupo procesado', [
+                    'id' => $grupo->id,
+                    'name' => $grupo->name,
+                    'is_owner' => $isOwner,
+                    'user_permission' => $permissionLevel,
+                    'has_write_access' => $grupo->has_write_access,
+                    'owner_id' => $grupo->user_id,
+                    'current_user_id' => $user->id,
+                    'is_starred' => $grupo->is_starred,
+                    'shared_with_count' => $grupo->sharedUsers->count()
+                ]);
+                
                 return $grupo;
             });
+
+            Log::info('=== FIN GruposController::index (éxito) ===');
 
             return response()->json([
                 'message' => 200,
@@ -55,6 +113,11 @@ class GruposController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('ERROR en GruposController::index', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'message' => 500,
                 'message_text' => 'Error al obtener grupos: ' . $e->getMessage()
@@ -78,35 +141,8 @@ class GruposController extends Controller
             $user = auth()->user();
             Log::info('Usuario autenticado:', ['id' => $user->id, 'name' => $user->name]);
             
-            // 🆕 Si no se proporciona workspace_id, obtener o crear workspace General
+            // 🆕 Si no se proporciona workspace_id, el grupo quedará sin workspace
             $workspaceId = $request->workspace_id;
-            
-            if (!$workspaceId) {
-                Log::info('No se proporcionó workspace_id, buscando/creando General...');
-                
-                $generalWorkspace = Workspace::where('user_id', $user->id)
-                    ->where('is_general', true)
-                    ->first();
-                
-                if (!$generalWorkspace) {
-                    Log::info('Creando workspace General...');
-                    
-                    $generalWorkspace = Workspace::create([
-                        'name' => 'General',
-                        'description' => 'Espacio de trabajo principal',
-                        'color' => '#3b82f6',
-                        'user_id' => $user->id,
-                        'is_general' => true,
-                        'is_shared' => false,
-                    ]);
-                    
-                    Log::info('Workspace General creado:', ['id' => $generalWorkspace->id]);
-                } else {
-                    Log::info('Workspace General ya existe:', ['id' => $generalWorkspace->id]);
-                }
-                
-                $workspaceId = $generalWorkspace->id;
-            }
 
             Log::info('Workspace asignado:', ['workspace_id' => $workspaceId]);
 
@@ -195,6 +231,10 @@ class GruposController extends Controller
             $grupo->is_owner = $grupo->user_id == $user->id;
             $grupo->has_write_access = $grupo->hasWriteAccess($user->id);
             $grupo->permission_level = $grupo->getUserPermissionLevel($user->id);
+            $grupo->user_permission = $grupo->getUserPermissionLevel($user->id);
+            
+            // ⭐ NUEVO: Verificar si está marcado como favorito por el usuario actual
+            $grupo->is_starred = $grupo->isFavoritedBy($user->id);
 
             // ✅ Procesar imagen
             if ($grupo->image) {
@@ -225,50 +265,100 @@ class GruposController extends Controller
         }
     }
 
+    /**
+     * ✅ SOLUCIÓN PROBLEMA 2: Update mejorado para manejar fondos predeterminados
+     */
     public function update(Request $request, $id)
     {
         try {
+            Log::info('=== INICIO update GruposController ===');
+            Log::info('Datos recibidos:', $request->all());
+            Log::info('Grupo ID:', ['id' => $id]);
+            
+            // ✅ Validación mejorada: image puede ser archivo O string
             $request->validate([
                 'name' => 'required|string|max:250',
                 'color' => 'nullable|string|max:20',
-                'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+                'image' => 'nullable', // ✅ Quitar validación estricta de archivo
                 'workspace_id' => 'nullable|exists:workspaces,id',
             ]);
 
             $user = auth()->user();
             $grupo = Grupos::findOrFail($id);
 
+            Log::info('Grupo encontrado:', [
+                'id' => $grupo->id,
+                'name' => $grupo->name,
+                'user_id' => $grupo->user_id,
+                'current_image' => $grupo->image
+            ]);
+
             // Verificar que el usuario tenga permiso para editar
             if (!$grupo->hasWriteAccess($user->id)) {
+                Log::warning('Usuario sin permisos de escritura', [
+                    'user_id' => $user->id,
+                    'grupo_id' => $id
+                ]);
+                
                 return response()->json([
                     'message' => 403,
                     'message_text' => 'No tienes permiso para editar este grupo'
                 ], 403);
             }
 
-            // Manejar imagen si se proporciona
+            // ✅ Manejar imagen: archivo O nombre de fondo predeterminado
             if ($request->hasFile('image')) {
-                // Eliminar imagen anterior si existe
-                if ($grupo->image) {
+                Log::info('Procesando archivo de imagen...');
+                
+                // Eliminar imagen anterior si NO es un fondo predeterminado
+                if ($grupo->image && !preg_match('/^fondo\d+\.png$/', $grupo->image)) {
                     Storage::disk('public')->delete($grupo->image);
+                    Log::info('Imagen anterior eliminada:', ['image' => $grupo->image]);
                 }
                 
                 $image = $request->file('image');
                 $imageName = time() . '_' . $image->getClientOriginalName();
                 $imagePath = $image->storeAs('grupos', $imageName, 'public');
                 $grupo->image = $imagePath;
+                
+                Log::info('Nueva imagen guardada:', ['path' => $imagePath]);
+                
+            } elseif ($request->has('image') && is_string($request->image)) {
+                // ✅ Es un nombre de fondo predeterminado
+                Log::info('Actualizando con fondo predeterminado:', ['image' => $request->image]);
+                
+                // Si la imagen anterior NO era un fondo predeterminado, eliminarla
+                if ($grupo->image && 
+                    !preg_match('/^fondo\d+\.png$/', $grupo->image) && 
+                    str_starts_with($grupo->image, 'grupos/')) {
+                    Storage::disk('public')->delete($grupo->image);
+                    Log::info('Imagen personalizada anterior eliminada');
+                }
+                
+                $grupo->image = $request->image;
+                Log::info('Fondo predeterminado asignado:', ['image' => $request->image]);
             }
 
             // Actualizar campos básicos
             $grupo->name = $request->name;
-            $grupo->color = $request->color ?? $grupo->color;
+            
+            if ($request->has('color')) {
+                $grupo->color = $request->color;
+            }
             
             // 🆕 Solo el propietario puede cambiar el workspace
             if ($grupo->user_id === $user->id && $request->has('workspace_id')) {
                 $grupo->workspace_id = $request->workspace_id;
+                Log::info('Workspace actualizado:', ['workspace_id' => $request->workspace_id]);
             }
             
             $grupo->save();
+
+            Log::info('Grupo actualizado exitosamente:', [
+                'id' => $grupo->id,
+                'name' => $grupo->name,
+                'image' => $grupo->image
+            ]);
 
             // Recargar relaciones
             $grupo->load(['user', 'sharedUsers', 'workspace']);
@@ -277,6 +367,10 @@ class GruposController extends Controller
             $grupo->is_owner = $grupo->user_id == $user->id;
             $grupo->has_write_access = $grupo->hasWriteAccess($user->id);
             $grupo->permission_level = $grupo->getUserPermissionLevel($user->id);
+            $grupo->user_permission = $grupo->getUserPermissionLevel($user->id);
+            $grupo->shared_with = $grupo->sharedUsers;
+
+            Log::info('=== FIN update GruposController (éxito) ===');
 
             return response()->json([
                 'message' => 200,
@@ -285,9 +379,21 @@ class GruposController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('ERROR en update GruposController:', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'message' => 500,
-                'message_text' => 'Error al actualizar grupo: ' . $e->getMessage()
+                'message_text' => 'Error al actualizar grupo: ' . $e->getMessage(),
+                'debug' => [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'error' => $e->getMessage()
+                ]
             ], 500);
         }
     }
@@ -306,8 +412,8 @@ class GruposController extends Controller
                 ], 403);
             }
 
-            // Eliminar imagen si existe
-            if ($grupo->image) {
+            // Eliminar imagen si existe y no es un fondo predeterminado
+            if ($grupo->image && !preg_match('/^fondo\d+\.png$/', $grupo->image)) {
                 Storage::disk('public')->delete($grupo->image);
             }
 
@@ -326,317 +432,241 @@ class GruposController extends Controller
         }
     }
 
-    public function moveToWorkspace(Request $request, $id)
+    // Toggle estrella (favorito)
+    /**
+     * ⭐ Marcar/Desmarcar grupo como favorito (por usuario)
+     * POST /api/grupos/{id}/toggle-star
+     */
+    public function toggleStar($id)
     {
         try {
-            $request->validate([
-                'workspace_id' => 'required|exists:workspaces,id',
-            ]);
-
             $user = auth()->user();
-            $grupo = Grupos::findOrFail($id);
-
-            // Solo el propietario puede mover el grupo
-            if ($grupo->user_id !== $user->id) {
-                return response()->json([
-                    'message' => 403,
-                    'message_text' => 'Solo el propietario puede mover este grupo'
-                ], 403);
+            
+            // Verificar que el usuario tenga acceso al grupo
+            $grupo = Grupos::where(function($query) use ($user) {
+                $query->where('user_id', $user->id)
+                      ->orWhereHas('sharedUsers', function($q) use ($user) {
+                          $q->where('users.id', $user->id);
+                      });
+            })->findOrFail($id);
+            
+            // ⭐ NUEVO: Usar sistema de favoritos por usuario
+            $isStarred = $grupo->isFavoritedBy($user->id);
+            
+            if ($isStarred) {
+                $grupo->removeFavorite($user->id);
+                $newStatus = false;
+                $message = 'Grupo desmarcado como favorito';
+            } else {
+                $grupo->addFavorite($user->id);
+                $newStatus = true;
+                $message = 'Grupo marcado como favorito';
             }
 
-            // Verificar que el workspace pertenezca al usuario
-            $workspace = Workspace::where('user_id', $user->id)
-                ->findOrFail($request->workspace_id);
-
-            $grupo->workspace_id = $workspace->id;
-            $grupo->save();
-
-            // Recargar con workspace
-            $grupo->load('workspace');
+            Log::info('Toggle star ejecutado', [
+                'grupo_id' => $grupo->id,
+                'user_id' => $user->id,
+                'is_starred' => $newStatus
+            ]);
 
             return response()->json([
                 'message' => 200,
-                'message_text' => 'Grupo movido exitosamente',
-                'grupo' => $grupo
+                'is_starred' => $newStatus,
+                'message_text' => $message
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error en toggleStar', [
+                'error' => $e->getMessage(),
+                'grupo_id' => $id,
+                'user_id' => auth()->id()
+            ]);
+            
+            return response()->json([
+                'message' => 500,
+                'message_text' => 'Error al marcar grupo: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // Compartir grupo con usuarios
+    public function share(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'user_ids' => 'required|array',
+                'user_ids.*' => 'exists:users,id',
+            ]);
+
+            $user = auth()->user();
+            $grupo = Grupos::where('user_id', $user->id)->findOrFail($id);
+
+            // Obtener IDs de usuarios ya compartidos
+            $existingUserIds = $grupo->sharedUsers()->pluck('users.id')->toArray();
+            
+            // Filtrar solo nuevos usuarios
+            $newUserIds = array_diff($request->user_ids, $existingUserIds);
+            
+            if (count($newUserIds) > 0) {
+                // Agregar nuevos usuarios con nivel de permiso 'write' por defecto
+                $syncData = [];
+                foreach ($newUserIds as $userId) {
+                    $syncData[$userId] = ['permission_level' => 'write'];
+                }
+                
+                $grupo->sharedUsers()->attach($syncData);
+                
+                Log::info('✅ Usuarios agregados al grupo', [
+                    'grupo_id' => $grupo->id,
+                    'grupo_nombre' => $grupo->name,
+                    'propietario_id' => $user->id,
+                    'nuevos_usuarios' => $newUserIds,
+                    'total_nuevos' => count($newUserIds)
+                ]);
+                
+                // 📝 NOTA: Sistema de notificaciones deshabilitado temporalmente
+                // Para habilitar notificaciones, descomentar el código siguiente y
+                // asegurarse de que NotificationService::grupoCompartido() existe
+                
+                /*
+                // ✅ CREAR NOTIFICACIONES para cada usuario nuevo
+                try {
+                    $propietario = $user;
+                    
+                    foreach ($newUserIds as $userId) {
+                        $invitado = User::find($userId);
+                        
+                        if ($invitado && class_exists('App\Services\NotificationService')) {
+                            NotificationService::grupoCompartido(
+                                $grupo,
+                                $propietario,
+                                $invitado
+                            );
+                            
+                            Log::info('✅ Notificación de grupo compartido enviada', [
+                                'grupo_id' => $grupo->id,
+                                'propietario_id' => $propietario->id,
+                                'invitado_id' => $userId
+                            ]);
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('⚠️ No se pudieron crear algunas notificaciones: ' . $e->getMessage());
+                }
+                */
+            }
+
+            // Recargar usuarios compartidos
+            $grupo->load('sharedUsers');
+
+            return response()->json([
+                'message' => 200,
+                'message_text' => 'Grupo compartido exitosamente',
+                'shared_users' => $grupo->sharedUsers,
+                'new_users_count' => count($newUserIds)
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 500,
-                'message_text' => 'Error al mover grupo: ' . $e->getMessage()
+                'message_text' => 'Error al compartir grupo: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    public function toggleStar($id)
-    {
-        $grupo = Grupos::findOrFail($id);
-        
-        if ($grupo->user_id != auth()->id() && !$grupo->sharedUsers->contains(auth()->id())) {
-            return response()->json([
-                "message" => 403,
-                "message_text" => "No tienes acceso a este grupo"
-            ], 403);
-        }
-
-        $grupo->is_starred = !$grupo->is_starred;
-        $grupo->save();
-
-        return response()->json([
-            "message" => 200,
-            "is_starred" => $grupo->is_starred
-        ]);
-    }
-
-    public function share(Request $request, $id)
-    {
-        try {
-            // Validar los datos
-            $request->validate([
-                'user_ids' => 'required|array',
-                'user_ids.*' => 'exists:users,id'
-            ]);
-
-            // Buscar el grupo
-            $grupo = Grupos::findOrFail($id);
-            
-            // Verificar que el usuario autenticado sea el propietario
-            if ($grupo->user_id != auth()->id()) {
-                return response()->json([
-                    "message" => 403,
-                    "message_text" => "Solo el propietario puede compartir este grupo"
-                ], 403);
-            }
-
-            // Obtener el propietario del grupo
-            $propietario = auth()->user();
-            $nombrePropietario = trim($propietario->name . ' ' . ($propietario->surname ?? ''));
-
-            // Obtener los usuarios que van a ser agregados (solo los nuevos)
-            $usuariosExistentes = $grupo->sharedUsers->pluck('id')->toArray();
-            $nuevosUsuariosIds = array_diff($request->user_ids, $usuariosExistentes);
-            
-            // Si no hay usuarios nuevos para agregar
-            if (empty($nuevosUsuariosIds)) {
-                return response()->json([
-                    "message" => 200,
-                    "message_text" => "Los usuarios ya están agregados al grupo",
-                    "shared_with" => $grupo->sharedUsers->map(function($user) {
-                        return [
-                            'id' => $user->id,
-                            'name' => $user->name,
-                            'email' => $user->email,
-                            'permission_level' => $user->pivot->permission_level
-                        ];
-                    })
-                ]);
-            }
-
-            // Obtener los datos de los nuevos usuarios
-            $nuevosUsuarios = User::whereIn('id', $nuevosUsuariosIds)->get();
-
-            // Compartir el grupo (agregar usuarios con permiso 'write' por defecto)
-            foreach ($nuevosUsuariosIds as $userId) {
-                $grupo->sharedUsers()->attach($userId, ['permission_level' => 'write']);
-            }
-
-            // ✅ ENVIAR CORREOS ELECTRÓNICOS
-            
-            // 1️⃣ Preparar datos de usuarios para el correo del propietario
-            $usuariosParaCorreo = $nuevosUsuarios->map(function($user) {
-                return [
-                    'name' => trim($user->name . ' ' . ($user->surname ?? '')),
-                    'email' => $user->email
-                ];
-            })->toArray();
-
-            // 2️⃣ Enviar correo al PROPIETARIO (quien comparte)
-            try {
-                if ($propietario && $propietario->email) {
-                    Mail::to($propietario->email)
-                        ->send(new GrupoCompartidoPropietarioMail(
-                            $grupo->name,
-                            $nombrePropietario,
-                            $usuariosParaCorreo
-                        ));
-                    
-                    // ✅ CREAR NOTIFICACIÓN EN EL SISTEMA para el propietario
-                    NotificationService::grupoCompartidoPropietario(
-                        $grupo, 
-                        $propietario, 
-                        $usuariosParaCorreo
-                    );
-                    
-                    Log::info('✅ Correo y notificación enviados al propietario', [
-                        'email' => $propietario->email,
-                        'grupo_id' => $grupo->id,
-                        'usuarios_compartidos' => count($usuariosParaCorreo)
-                    ]);
-                }
-            } catch (\Exception $e) {
-                Log::error('❌ Error al enviar correo/notificación al propietario: ' . $e->getMessage());
-            }
-
-            // 3️⃣ Enviar correo a CADA USUARIO INVITADO
-            foreach ($nuevosUsuarios as $usuario) {
-                try {
-                    if ($usuario && $usuario->email) {
-                        $nombreInvitado = trim($usuario->name . ' ' . ($usuario->surname ?? ''));
-                        
-                        // Enviar correo
-                        Mail::to($usuario->email)
-                            ->send(new GrupoCompartidoInvitadoMail(
-                                $grupo->name,
-                                $nombreInvitado,
-                                $nombrePropietario
-                            ));
-                        
-                        // ✅ CREAR NOTIFICACIÓN EN EL SISTEMA para el invitado
-                        NotificationService::grupoCompartidoInvitado(
-                            $grupo, 
-                            $propietario, 
-                            $usuario
-                        );
-                        
-                        Log::info('✅ Correo y notificación enviados al invitado', [
-                            'email' => $usuario->email,
-                            'grupo_id' => $grupo->id,
-                            'nombre' => $nombreInvitado
-                        ]);
-                    }
-                } catch (\Exception $e) {
-                    Log::error('❌ Error al enviar correo/notificación al invitado ' . $usuario->email . ': ' . $e->getMessage());
-                }
-            }
-
-            // Recargar la relación para obtener los usuarios actualizados
-            $grupo->load('sharedUsers');
-
-            return response()->json([
-                "message" => 200,
-                "message_text" => "Grupo compartido exitosamente y correos enviados",
-                "shared_with" => $grupo->sharedUsers->map(function($user) {
-                    return [
-                        'id' => $user->id,
-                        'name' => $user->name,
-                        'email' => $user->email,
-                        'permission_level' => $user->pivot->permission_level
-                    ];
-                })
-            ]);
-
-        } catch (ValidationException $e) {
-            Log::warning('Validación fallida al compartir grupo', [
-                'errors' => $e->errors()
-            ]);
-            
-            return response()->json([
-                'message' => 422,
-                'errors' => $e->errors()
-            ], 422);
-
-        } catch (\Exception $e) {
-            Log::error('Error al compartir grupo: ' . $e->getMessage());
-            
-            return response()->json([
-                "message" => 500,
-                "message_text" => "Error al compartir el grupo"
-            ], 500);
-        }
-    }
-
-    public function searchUsers(Request $request)
-    {
-        $search = $request->get('search', '');
-        
-        if (empty(trim($search)) || strlen(trim($search)) < 2) {
-            return response()->json([
-                'message' => 200,
-                'users' => []
-            ]);
-        }
-        
-        $users = User::where('id', '!=', auth()->id())
-            ->where(function($query) use ($search) {
-                $query->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('surname', 'like', "%{$search}%")
-                      ->orWhere('phone', 'like', "%{$search}%");
-            })
-            ->select('id', 'name', 'surname', 'email', 'phone', 'avatar')
-            ->orderBy('name', 'asc')
-            ->limit(10)
-            ->get();
-
-        return response()->json([
-            'message' => 200,
-            'users' => $users->map(function($user) {
-                return [
-                    'id' => $user->id,
-                    'name' => trim($user->name . ' ' . ($user->surname ?? '')),
-                    'email' => $user->email,
-                    'phone' => $user->phone,
-                    'avatar' => $user->avatar 
-                        ? $user->avatar 
-                        : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'
-                ];
-            })
-        ]);
-    }
-
+    // Dejar de compartir con un usuario
     public function unshare($grupoId, $userId)
     {
-        $grupo = Grupos::findOrFail($grupoId);
-        
-        if ($grupo->user_id != auth()->id()) {
+        try {
+            $user = auth()->user();
+            $grupo = Grupos::where('user_id', $user->id)->findOrFail($grupoId);
+
+            $grupo->sharedUsers()->detach($userId);
+
             return response()->json([
-                "message" => 403,
-                "message_text" => "Solo el propietario puede dejar de compartir"
-            ], 403);
+                'message' => 200,
+                'message_text' => 'Usuario removido del grupo'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 500,
+                'message_text' => 'Error al dejar de compartir: ' . $e->getMessage()
+            ], 500);
         }
-
-        $grupo->sharedUsers()->detach($userId);
-
-        return response()->json(["message" => 200]);
     }
 
+    // Buscar usuarios para compartir
+    public function searchUsers(Request $request)
+    {
+        try {
+            $search = $request->get('search', '');
+            $currentUserId = auth()->id();
+
+            $users = User::where('id', '!=', $currentUserId)
+                ->when($search, function($query) use ($search) {
+                    return $query->where(function($q) use ($search) {
+                        $q->where('name', 'like', '%' . $search . '%')
+                          ->orWhere('email', 'like', '%' . $search . '%');
+                    });
+                })
+                ->select('id', 'name', 'email', 'avatar')
+                ->limit(10)
+                ->get();
+
+            return response()->json([
+                'message' => 200,
+                'users' => $users
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 500,
+                'message_text' => 'Error al buscar usuarios: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // Obtener usuarios con quienes está compartido
     public function getSharedUsers($id)
     {
-        $grupo = Grupos::findOrFail($id);
-        
-        if ($grupo->user_id != auth()->id() && !$grupo->sharedUsers->contains(auth()->id())) {
-            return response()->json([
-                "message" => 403,
-                "message_text" => "No tienes acceso a este grupo"
-            ], 403);
-        }
+        try {
+            $user = auth()->user();
+            
+            $grupo = Grupos::where(function($query) use ($user) {
+                $query->where('user_id', $user->id)
+                      ->orWhereHas('sharedUsers', function($q) use ($user) {
+                          $q->where('users.id', $user->id);
+                      });
+            })->with('sharedUsers')->findOrFail($id);
 
-        return response()->json([
-            "message" => 200,
-            "shared_users" => $grupo->sharedUsers->map(function($user) {
-                return [
-                    'id' => $user->id,
-                    'name' => trim($user->name . ' ' . ($user->surname ?? '')),
-                    'email' => $user->email,
-                    'phone' => $user->phone,
-                    'avatar' => $user->avatar 
-                        ? $user->avatar 
-                        : 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png',
-                    'permission_level' => $user->pivot->permission_level
-                ];
-            })
-        ]);
+            return response()->json([
+                'message' => 200,
+                'shared_users' => $grupo->sharedUsers
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 500,
+                'message_text' => 'Error al obtener usuarios: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
-    // ========================================
-    // 🔒 MÉTODOS DE PERMISOS
-    // ========================================
+    /**
+     * Obtener configuración de permisos del grupo
+     * GET /api/grupos/{id}/permissions
+     */
+    /**
+     * Obtener permisos del grupo
+     * GET /api/grupos/{id}/permissions
+     */
     public function getPermissions($id)
     {
         try {
             $grupo = Grupos::with('sharedUsers')->findOrFail($id);
             
-            // Verificar que el usuario autenticado sea el propietario
+            // Verificar que el usuario sea el propietario
             if ($grupo->user_id != auth()->id()) {
                 return response()->json([
                     "message" => 403,
@@ -644,25 +674,21 @@ class GruposController extends Controller
                 ], 403);
             }
 
-            // ✅ CORRECCIÓN: Cambiar 'shared_users' a 'users' y separar name/surname
-            $sharedUsersWithPermissions = $grupo->sharedUsers->map(function($user) {
-                return [
-                    'id' => $user->id,
-                    'name' => $user->name,           // ✅ Separado
-                    'surname' => $user->surname,     // ✅ Separado
-                    'email' => $user->email,
-                    'avatar' => $user->avatar 
-                        ? $user->avatar 
-                        : null,  // ✅ Usar null en vez de imagen placeholder
-                    'permission_level' => $user->pivot->permission_level
-                ];
-            });
-
+            // ✅ CORREGIDO: Retornar estructura correcta con permissions anidado
             return response()->json([
                 "message" => 200,
                 "permissions" => [
-                    'permission_type' => $grupo->permission_type,
-                    'users' => $sharedUsersWithPermissions  // ✅ Cambiar a 'users'
+                    "permission_type" => $grupo->permission_type,
+                    "users" => $grupo->sharedUsers->map(function($user) {
+                        return [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'surname' => $user->surname ?? '',
+                            'email' => $user->email,
+                            'avatar' => $user->avatar,
+                            'permission_level' => $user->pivot->permission_level
+                        ];
+                    })
                 ]
             ]);
 
@@ -676,6 +702,11 @@ class GruposController extends Controller
         }
     }
 
+    /**
+     * Actualizar el tipo de permiso general del grupo
+     * POST /api/grupos/{id}/permissions/type
+     * Body: { permission_type: 'all' | 'readonly' | 'custom' }
+     */
     public function updatePermissionType(Request $request, $id)
     {
         try {
@@ -685,7 +716,7 @@ class GruposController extends Controller
 
             $grupo = Grupos::findOrFail($id);
             
-            // Verificar que el usuario autenticado sea el propietario
+            // Verificar que el usuario sea el propietario
             if ($grupo->user_id != auth()->id()) {
                 return response()->json([
                     "message" => 403,
@@ -693,15 +724,13 @@ class GruposController extends Controller
                 ], 403);
             }
 
-            $oldType = $grupo->permission_type;
             $grupo->permission_type = $request->permission_type;
             $grupo->save();
 
             Log::info('Tipo de permiso actualizado', [
-                'grupo_id' => $grupo->id,
-                'old_type' => $oldType,
-                'new_type' => $grupo->permission_type,
-                'user_id' => auth()->id()
+                'grupo_id' => $id,
+                'permission_type' => $request->permission_type,
+                'updated_by' => auth()->id()
             ]);
 
             return response()->json([
@@ -767,24 +796,15 @@ class GruposController extends Controller
                 'permission_level' => $request->permission_level,
                 'updated_by' => auth()->id()
             ]);
-
-            return response()->json([
-                "message" => 200,
-                "message_text" => "Permiso actualizado correctamente",
-                "permission_level" => $request->permission_level
-            ]);
-
-            // Actualizar el nivel de permiso en la tabla pivote
-            $grupo->sharedUsers()->updateExistingPivot($userId, [
-                'permission_level' => $request->permission_level
-            ]);
-
+            
+            // 📝 NOTA: Sistema de notificaciones deshabilitado temporalmente
+            /*
             // ✅ CREAR NOTIFICACIÓN EN EL SISTEMA para el usuario afectado
             try {
                 $propietario = auth()->user();
                 $afectado = User::find($userId);
                 
-                if ($afectado) {
+                if ($afectado && class_exists('App\Services\NotificationService')) {
                     NotificationService::permisosCambiados(
                         $grupo,
                         $propietario,
@@ -801,12 +821,12 @@ class GruposController extends Controller
             } catch (\Exception $e) {
                 Log::warning('⚠️ No se pudo crear notificación de cambio de permisos: ' . $e->getMessage());
             }
+            */
 
-            Log::info('Permiso de usuario actualizado', [
-                'grupo_id' => $grupoId,
-                'user_id' => $userId,
-                'permission_level' => $request->permission_level,
-                'updated_by' => auth()->id()
+            return response()->json([
+                "message" => 200,
+                "message_text" => "Permiso actualizado correctamente",
+                "permission_level" => $request->permission_level
             ]);
 
         } catch (ValidationException $e) {
@@ -915,6 +935,60 @@ class GruposController extends Controller
             return response()->json([
                 "message" => 500,
                 "message_text" => "Error al actualizar permisos"
+            ], 500);
+        }
+    }
+
+    /**
+     * 🆕 Mover grupo a otro workspace
+     * POST /api/grupos/{id}/move
+     * Body: { workspace_id: 1 (o null para sin workspace) }
+     */
+    public function moveToWorkspace(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'workspace_id' => 'nullable|exists:workspaces,id'
+            ]);
+
+            $user = auth()->user();
+            $grupo = Grupos::where('user_id', $user->id)->findOrFail($id);
+
+            // Si workspace_id no es null, verificar que pertenezca al usuario
+            if ($request->workspace_id !== null) {
+                $workspace = Workspace::where('id', $request->workspace_id)
+                    ->where('user_id', $user->id)
+                    ->first();
+
+                if (!$workspace) {
+                    return response()->json([
+                        'message' => 403,
+                        'message_text' => 'No tienes permiso para mover a este workspace'
+                    ], 403);
+                }
+            }
+
+            $grupo->workspace_id = $request->workspace_id;
+            $grupo->save();
+
+            Log::info('Grupo movido a workspace', [
+                'grupo_id' => $id,
+                'workspace_id' => $request->workspace_id,
+                'moved_by' => $user->id
+            ]);
+
+            return response()->json([
+                'message' => 200,
+                'message_text' => 'Grupo movido exitosamente',
+                'grupo' => $grupo->load('workspace')
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al mover grupo: ' . $e->getMessage());
+            
+            return response()->json([
+                'message' => 500,
+                'message_text' => 'Error al mover grupo: ' . $e->getMessage()
             ], 500);
         }
     }

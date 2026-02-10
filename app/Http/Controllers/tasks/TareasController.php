@@ -135,10 +135,10 @@ class TareasController extends Controller
         try {
             Log::info('TareasController@show - Iniciando', ['tarea_id' => $id]);
 
-            // Buscar tarea con todas sus relaciones
+            // ✅ CORRECCIÓN CRÍTICA: Cargar checklists.items.assignedUsers
             $tarea = Tareas::with([
                 'etiquetas',
-                'checklists.items',
+                'checklists.items.assignedUsers',  // ✅ CAMBIO AQUÍ: Agregado .assignedUsers
                 'comentarios.user',
                 'actividades.user',
                 'user',
@@ -149,8 +149,20 @@ class TareasController extends Controller
 
             Log::info('TareasController@show - Tarea encontrada', [
                 'tarea_id' => $tarea->id,
-                'tarea_name' => $tarea->name
+                'tarea_name' => $tarea->name,
+                'checklists_count' => $tarea->checklists->count()
             ]);
+
+            // ✅ DEBUG: Verificar que assignedUsers se cargó
+            if ($tarea->checklists->isNotEmpty() && $tarea->checklists->first()->items->isNotEmpty()) {
+                $firstItem = $tarea->checklists->first()->items->first();
+                Log::info('DEBUG - Primer item del primer checklist:', [
+                    'item_id' => $firstItem->id,
+                    'item_name' => $firstItem->name,
+                    'assigned_users_count' => $firstItem->assignedUsers->count(),
+                    'assigned_users' => $firstItem->assignedUsers->toArray()
+                ]);
+            }
 
             // Cargar adjuntos de forma separada y segura
             $enlaces = [];
@@ -191,6 +203,36 @@ class TareasController extends Controller
                 // Continuar sin adjuntos si hay error
             }
 
+            // ✅ CORRECCIÓN CRÍTICA: Formatear checklists con assigned_users
+            $checklistsFormateados = $tarea->checklists->map(function($checklist) {
+                return [
+                    'id' => $checklist->id,
+                    'name' => $checklist->name,
+                    'orden' => $checklist->orden,
+                    'progress' => $checklist->progress,
+                    'items' => $checklist->items->map(function($item) {
+                        return [
+                            'id' => $item->id,
+                            'name' => $item->name,
+                            'completed' => $item->completed,
+                            'orden' => $item->orden,
+                            'due_date' => $item->due_date ? $item->due_date->format('Y-m-d') : null,
+                            'assigned_users' => $item->assignedUsers->map(function($user) {
+                                return [
+                                    'id' => $user->id,
+                                    'name' => $user->name,
+                                    'surname' => $user->surname,
+                                    'email' => $user->email,
+                                    'avatar' => $user->avatar ? $user->avatar : null
+                                ];
+                            }),
+                            'is_overdue' => $item->isOverdue(),
+                            'is_due_soon' => $item->isDueSoon()
+                        ];
+                    })
+                ];
+            });
+
             // Construir respuesta
             $tareaData = [
                 'id' => $tarea->id,
@@ -208,13 +250,13 @@ class TareasController extends Controller
                 
                 // Relaciones
                 'etiquetas' => $tarea->etiquetas,
-                'checklists' => $tarea->checklists,
+                'checklists' => $checklistsFormateados,  // ✅ CAMBIO AQUÍ: Usar versión formateada
                 'comentarios' => $tarea->comentarios,
                 'user' => $tarea->user,
                 'lista' => $tarea->lista,
                 'grupo' => $tarea->grupo,
 
-                // AGREGADO: Miembros asignados
+                // Miembros asignados
                 'assigned_members' => $tarea->assignedUsers->map(function($user) {
                     return [
                         'id' => $user->id,
@@ -242,14 +284,20 @@ class TareasController extends Controller
                 'updated_at' => $tarea->updated_at,
             ];
 
+            Log::info('TareasController@show - Respuesta preparada', [
+                'tarea_id' => $tarea->id,
+                'checklists_count' => $checklistsFormateados->count()
+            ]);
+
             return response()->json([
                 'message' => 200,
                 'tarea' => $tareaData
             ]);
 
         } catch (ModelNotFoundException $e) {
-            Log::warning('TareasController@show - Tarea no encontrada', [
-                'tarea_id' => $id
+            Log::error('TareasController@show - Tarea no encontrada', [
+                'tarea_id' => $id,
+                'error' => $e->getMessage()
             ]);
 
             return response()->json([
@@ -258,7 +306,7 @@ class TareasController extends Controller
             ], 404);
 
         } catch (\Exception $e) {
-            Log::error('TareasController@show - Error', [
+            Log::error('TareasController@show - Error inesperado', [
                 'tarea_id' => $id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -266,8 +314,7 @@ class TareasController extends Controller
 
             return response()->json([
                 'message' => 500,
-                'error' => 'Error al cargar la tarea',
-                'details' => config('app.debug') ? $e->getMessage() : null
+                'error' => 'Error al cargar la tarea'
             ], 500);
         }
     }
@@ -291,31 +338,69 @@ class TareasController extends Controller
                 'start_date' => 'nullable|date',
                 'due_date' => 'nullable|date|after_or_equal:start_date',
                 'status' => 'nullable|in:pendiente,en_progreso,completada',
-                'grupo_id' => 'nullable|exists:grupos,id',
-                'lista_id' => 'nullable|exists:listas,id',
+                'lista_id' => 'required|exists:listas,id', // ✅ REQUERIDO
             ]);
 
-            $tarea = Tareas::create($request->all());
+            // ✅ CRÍTICO: Obtener grupo_id desde la lista
+            $listaId = $request->lista_id;
+            $lista = \App\Models\tasks\Lista::findOrFail($listaId);
+            $grupoId = $lista->grupo_id;
+
+            if (!$grupoId) {
+                Log::warning('TareasController@store - Lista sin grupo_id', [
+                    'lista_id' => $listaId,
+                    'lista_name' => $lista->name
+                ]);
+            }
+
+            Log::info('✅ grupo_id obtenido desde lista', [
+                'lista_id' => $listaId,
+                'lista_name' => $lista->name,
+                'grupo_id' => $grupoId
+            ]);
+
+            // Obtener el máximo orden actual
+            $maxOrden = Tareas::where('lista_id', $listaId)->max('orden') ?? -1;
+
+            // ✅ CREAR TAREA CON grupo_id
+            $tarea = Tareas::create([
+                'name' => $request->name,
+                'description' => $request->description,
+                'type_task' => $request->type_task,
+                'priority' => $request->priority ?? 'medium',
+                'start_date' => $request->start_date,
+                'due_date' => $request->due_date,
+                'status' => $request->status ?? 'pendiente',
+                'lista_id' => $listaId,
+                'grupo_id' => $grupoId, // ✅ INCLUIR GRUPO_ID
+                'orden' => $maxOrden + 1,
+                'user_id' => auth()->id(),
+                'notifications_enabled' => $request->notifications_enabled ?? false,
+                'notification_days_before' => $request->notification_days_before ?? null,
+            ]);
 
             // Registrar actividad
             Actividad::create([
                 'type' => 'created',
                 'description' => 'creó la tarea',
                 'tarea_id' => $tarea->id,
-                'user_id' => auth()->id(),
+                'user_id' => auth()->id()
             ]);
 
-            Log::info('TareasController@store - Tarea creada', [
-                'tarea_id' => $tarea->id
+            Log::info('TareasController@store - Tarea creada exitosamente', [
+                'tarea_id' => $tarea->id,
+                'tarea_name' => $tarea->name,
+                'lista_id' => $listaId,
+                'grupo_id' => $grupoId // ✅ CONFIRMAR
             ]);
 
             return response()->json([
-                'message' => 201,
-                'tarea' => $tarea
+                'message' => 200,
+                'tarea' => $tarea->fresh(['lista', 'grupo', 'user'])
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('TareasController@store - Validación fallida', [
+            Log::error('TareasController@store - Validación fallida', [
                 'errors' => $e->errors()
             ]);
 
@@ -332,7 +417,7 @@ class TareasController extends Controller
 
             return response()->json([
                 'message' => 500,
-                'error' => 'Error al crear la tarea'
+                'error' => 'Error al crear la tarea: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -354,142 +439,58 @@ class TareasController extends Controller
             $request->validate([
                 'name' => 'sometimes|required|string|max:150',
                 'description' => 'nullable|string',
+                'type_task' => 'sometimes|in:simple,evento',
+                'priority' => 'nullable|in:low,medium,high',
                 'start_date' => 'nullable|date',
-                'due_date' => 'nullable|date|after_or_equal:start_date',
-                'priority' => 'sometimes|in:low,medium,high',
-                'status' => 'sometimes|in:pendiente,en_progreso,completada',
-                'notifications_enabled' => 'sometimes|boolean',
-                'notification_days_before' => 'nullable|integer|min:1|max:7',
+                'due_date' => 'nullable|date',
+                'status' => 'nullable|in:pendiente,en_progreso,completada',
+                'lista_id' => 'sometimes|exists:listas,id',
+                'notifications_enabled' => 'nullable|boolean',
+                'notification_days_before' => 'nullable|integer|min:1|max:30',
             ]);
 
-            // Guardar valores antiguos para el registro de actividad
-            $oldData = [
-                'start_date' => $tarea->start_date,
-                'due_date' => $tarea->due_date,
-                'status' => $tarea->status,
-                'description' => $tarea->description,
-                'notifications_enabled' => $tarea->notifications_enabled,
-                'notification_days_before' => $tarea->notification_days_before,
-            ];
+            $dataToUpdate = $request->only([
+                'name', 'description', 'type_task', 'priority',
+                'start_date', 'due_date', 'status', 'lista_id',
+                'notifications_enabled', 'notification_days_before'
+            ]);
 
-            // 🆕 Si se cambia la fecha de vencimiento o las notificaciones, resetear las notificaciones enviadas
-            if ($request->has('due_date') && $oldData['due_date'] != $request->due_date) {
-                $tarea->notification_sent_at = null;
-                $tarea->overdue_notification_sent_at = null;
-            }
+            // ✅ CRÍTICO: Si cambia lista_id, actualizar grupo_id también
+            if (isset($dataToUpdate['lista_id']) && $dataToUpdate['lista_id'] != $tarea->lista_id) {
+                $nuevaLista = \App\Models\tasks\Lista::findOrFail($dataToUpdate['lista_id']);
+                $dataToUpdate['grupo_id'] = $nuevaLista->grupo_id;
+                
+                Log::info('✅ grupo_id actualizado por cambio de lista', [
+                    'tarea_id' => $id,
+                    'lista_id_anterior' => $tarea->lista_id,
+                    'lista_id_nueva' => $dataToUpdate['lista_id'],
+                    'grupo_id_anterior' => $tarea->grupo_id,
+                    'grupo_id_nuevo' => $dataToUpdate['grupo_id']
+                ]);
 
-            if ($request->has('notifications_enabled')) {
-                if ($request->notifications_enabled == false) {
-                    $tarea->notification_days_before = null;
-                    $tarea->notification_sent_at = null;
-                    $tarea->overdue_notification_sent_at = null;
-                } elseif ($oldData['notifications_enabled'] == false && $request->notifications_enabled == true) {
-                    $tarea->notification_sent_at = null;
-                    $tarea->overdue_notification_sent_at = null;
-                }
-            }
-
-            if ($request->has('notification_days_before') && 
-                $oldData['notification_days_before'] != $request->notification_days_before) {
-                $tarea->notification_sent_at = null;
-            }
-
-            // Actualizar la tarea
-            $tarea->update($request->all());
-
-            // Registrar actividades según los cambios
-            if ($request->has('start_date') && $oldData['start_date'] != $request->start_date) {
+                // Registrar actividad del cambio
                 Actividad::create([
-                    'type' => 'date_changed',
-                    'description' => 'actualizó la fecha de inicio',
+                    'type' => 'moved',
+                    'description' => 'movió la tarea a otra lista',
                     'tarea_id' => $tarea->id,
-                    'user_id' => auth()->id(),
-                    'changes' => json_encode([
-                        'old_date' => $oldData['start_date'],
-                        'new_date' => $request->start_date
-                    ])
+                    'user_id' => auth()->id()
                 ]);
             }
 
-            if ($request->has('due_date') && $oldData['due_date'] != $request->due_date) {
-                Actividad::create([
-                    'type' => 'date_changed',
-                    'description' => 'actualizó la fecha de vencimiento',
-                    'tarea_id' => $tarea->id,
-                    'user_id' => auth()->id(),
-                    'changes' => json_encode([
-                        'old_date' => $oldData['due_date'],
-                        'new_date' => $request->due_date
-                    ])
-                ]);
-            }
+            $tarea->update($dataToUpdate);
 
-            if ($request->has('notifications_enabled') && 
-                $oldData['notifications_enabled'] != $request->notifications_enabled) {
-                Actividad::create([
-                    'type' => 'notifications_changed',
-                    'description' => $request->notifications_enabled 
-                        ? 'habilitó las notificaciones de vencimiento' 
-                        : 'deshabilitó las notificaciones de vencimiento',
-                    'tarea_id' => $tarea->id,
-                    'user_id' => auth()->id(),
-                    'changes' => json_encode([
-                        'enabled' => $request->notifications_enabled,
-                        'days_before' => $request->notification_days_before
-                    ])
-                ]);
-            }
-
-            // 🎯 NUEVA FUNCIONALIDAD: Enviar notificaciones cuando la tarea se completa
-            if ($request->has('status') && $oldData['status'] != $request->status) {
-                // Registrar actividad de cambio de estado
-                Actividad::create([
-                    'type' => 'status_changed',
-                    'description' => 'cambió el estado',
-                    'tarea_id' => $tarea->id,
-                    'user_id' => auth()->id(),
-                    'changes' => json_encode([
-                        'old_status' => $oldData['status'],
-                        'new_status' => $request->status
-                    ])
-                ]);
-
-                // 📧 Si el nuevo estado es "completada", enviar notificaciones
-                if ($request->status === 'completada') {
-                    Log::info('✅ Tarea completada - Iniciando envío de notificaciones', [
-                        'tarea_id' => $tarea->id,
-                        'tarea_name' => $tarea->name
-                    ]);
-
-                    $this->enviarNotificacionesTareaCompletada($tarea);
-                }
-            }
-
-            if ($request->has('description') && $oldData['description'] != $request->description) {
-                Actividad::create([
-                    'type' => 'description_changed',
-                    'description' => 'actualizó la descripción',
-                    'tarea_id' => $tarea->id,
-                    'user_id' => auth()->id(),
-                ]);
-            }
-
-            // Recargar con relaciones
-            $tarea->load(['etiquetas', 'checklists.items', 'user', 'lista', 'grupo', 'assignedUsers']);
-
-            Log::info('TareasController@update - Tarea actualizada', [
-                'tarea_id' => $tarea->id,
-                'notifications_enabled' => $tarea->notifications_enabled,
-                'notification_days_before' => $tarea->notification_days_before,
+            Log::info('TareasController@update - Tarea actualizada exitosamente', [
+                'tarea_id' => $id,
+                'grupo_id' => $tarea->grupo_id
             ]);
 
             return response()->json([
                 'message' => 200,
-                'tarea' => $tarea
+                'tarea' => $tarea->fresh(['lista', 'grupo', 'user'])
             ]);
 
         } catch (ModelNotFoundException $e) {
-            Log::warning('TareasController@update - Tarea no encontrada', [
+            Log::error('TareasController@update - Tarea no encontrada', [
                 'tarea_id' => $id
             ]);
 
@@ -499,8 +500,7 @@ class TareasController extends Controller
             ], 404);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('TareasController@update - Validación fallida', [
-                'tarea_id' => $id,
+            Log::error('TareasController@update - Validación fallida', [
                 'errors' => $e->errors()
             ]);
 
@@ -511,14 +511,12 @@ class TareasController extends Controller
 
         } catch (\Exception $e) {
             Log::error('TareasController@update - Error', [
-                'tarea_id' => $id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'error' => $e->getMessage()
             ]);
 
             return response()->json([
                 'message' => 500,
-                'error' => 'Error al actualizar la tarea'
+                'error' => 'Error al actualizar la tarea: ' . $e->getMessage()
             ], 500);
         }
     }

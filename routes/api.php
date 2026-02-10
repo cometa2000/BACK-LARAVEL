@@ -144,11 +144,20 @@ Route::group([
     Route::post('/tareas/{tareaId}/checklists', [ChecklistsController::class, 'store']);
     Route::put('/tareas/{tareaId}/checklists/{checklistId}', [ChecklistsController::class, 'update']);
     Route::delete('/tareas/{tareaId}/checklists/{checklistId}', [ChecklistsController::class, 'destroy']);
+    
+    // 🆕 Copiar checklist
+    Route::get('/grupos/{grupoId}/checklists', [ChecklistsController::class, 'getGroupChecklists']);
+    Route::post('/tareas/{tareaId}/checklists/copy', [ChecklistsController::class, 'copyChecklist']);
 
     // Checklist Items
     Route::post('/tareas/{tareaId}/checklists/{checklistId}/items', [ChecklistsController::class, 'addItem']);
     Route::put('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}', [ChecklistsController::class, 'updateItem']);
     Route::delete('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}', [ChecklistsController::class, 'destroyItem']);
+    
+    // 🆕 Checklist Item Members (NUEVO)
+    Route::post('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}/assign-members', [ChecklistsController::class, 'assignMembers']);
+    Route::get('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}/members', [ChecklistsController::class, 'getMembers']);
+    Route::delete('/tareas/{tareaId}/checklists/{checklistId}/items/{itemId}/unassign-member/{userId}', [ChecklistsController::class, 'unassignMember']);
 
     // Adjuntos de tareas
     Route::get('/tareas/{tareaId}/adjuntos', [TareaAdjuntosController::class, 'index']);
@@ -159,6 +168,7 @@ Route::group([
     Route::post('/tareas/{tarea}/assign-members', [TareasController::class, 'assignMembers']);
     Route::get('/tareas/{tarea}/members', [TareasController::class, 'getMembers']);
     Route::delete('/tareas/{tarea}/unassign-member/{user}', [TareasController::class, 'unassignMember']);
+    
 
 
     // ========================================
@@ -194,25 +204,6 @@ Route::group([
     Route::get('/documentos/{id}/info', [DocumentosController::class, 'getDocumentInfo']);
     Route::post('/documentos/{id}/mark-viewed', [DocumentosController::class, 'markAsViewed']); // NUEVO
 
-
-    // ========================================
-    // 📄 DOCUMENTOS
-    // ========================================
-    // Route::get('/documentos', [DocumentosController::class, 'index']);
-    // Route::post('/documentos', [DocumentosController::class, 'store']);
-    // Route::get('/documentos/config', [DocumentosController::class, 'config']);
-    // Route::put('/documentos/{id}', [DocumentosController::class, 'update']);
-    // Route::delete('/documentos/{id}', [DocumentosController::class, 'destroy']);
-
-    // Carpetas
-    // Route::get('/documentos/tree', [DocumentosController::class, 'getTree']);
-    // Route::post('/documentos/folder', [DocumentosController::class, 'createFolder']);
-    // Route::get('/documentos/folder/{id}', [DocumentosController::class, 'getFolderContents']);
-    // Route::post('/documentos/{id}/move', [DocumentosController::class, 'move']);
-
-    // Descarga y visualización
-    // Route::get('/documentos/{id}/download', [DocumentosController::class, 'download']);
-    // Route::get('/documentos/{id}/info', [DocumentosController::class, 'getDocumentInfo']);
 
     // ========================================
     // 📊 ACTIVIDADES

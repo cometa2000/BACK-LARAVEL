@@ -1,30 +1,31 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\ActividadController;
-use App\Http\Controllers\UserAccessController;
-use App\Http\Controllers\tasks\GanttController;
-use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\tasks\GruposController;
-use App\Http\Controllers\tasks\ListasController;
-use App\Http\Controllers\tasks\TareasController;
+use App\Http\Controllers\ActivityController;
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CalendarEventController;
-use App\Http\Controllers\RolePermissionController;
-use App\Http\Controllers\tasks\EtiquetasController;
-use App\Http\Controllers\tasks\WorkspaceController;
-use App\Http\Controllers\tasks\ChecklistsController;
-use App\Http\Controllers\tasks\ComentariosController;
-use App\Http\Controllers\tasks\TareaAdjuntosController;
-use App\Http\Controllers\documents\DocumentosController;
-use App\Http\Controllers\Configuration\SucusaleController;
-use App\Http\Controllers\Configuration\WarehouseController;
 use App\Http\Controllers\Configuration\ClientSegmentController;
 use App\Http\Controllers\Configuration\MethodPaymentController;
 use App\Http\Controllers\Configuration\SucursaleDeliverieController;
+use App\Http\Controllers\Configuration\SucusaleController;
+use App\Http\Controllers\Configuration\WarehouseController;
+use App\Http\Controllers\documents\DocumentosController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\RolePermissionController;
+use App\Http\Controllers\sistema_de_tickets\TicketsController;
+use App\Http\Controllers\tasks\ChecklistsController;
+use App\Http\Controllers\tasks\ComentariosController;
+use App\Http\Controllers\tasks\EtiquetasController;
+use App\Http\Controllers\tasks\GanttController;
+use App\Http\Controllers\tasks\GruposController;
+use App\Http\Controllers\tasks\ListasController;
+use App\Http\Controllers\tasks\TareaAdjuntosController;
+use App\Http\Controllers\tasks\TareasController;
+use App\Http\Controllers\tasks\WorkspaceController;
+use App\Http\Controllers\UserAccessController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -231,6 +232,33 @@ Route::group([
     Route::get('/profile/documentos', [ProfileController::class, 'getUserDocumentos']);
     Route::get('/profile/stats', [ProfileController::class, 'getUserStats']);
     Route::get('/profile/complete', [ProfileController::class, 'getCompleteProfile']);
+
+    // ========================================
+    // 🎫 SISTEMA DE TICKETS
+    // ========================================
+    Route::prefix('sistema-de-tickets')->group(function () {
+        // Tickets CRUD
+        Route::get('/tickets',                        [TicketsController::class, 'index']);
+        Route::post('/tickets',                       [TicketsController::class, 'store']);
+        Route::get('/tickets/{id}',                   [TicketsController::class, 'show']);
+        Route::put('/tickets/{id}',                   [TicketsController::class, 'update']);
+        Route::delete('/tickets/{id}',                [TicketsController::class, 'destroy']);
+
+        // Acciones del ticket
+        Route::patch('/tickets/{id}/estado',          [TicketsController::class, 'cambiarEstado']);
+        Route::patch('/tickets/{id}/reasignar',       [TicketsController::class, 'reasignar']);
+        Route::patch('/tickets/{id}/favorito',        [TicketsController::class, 'toggleFavorito']);
+        Route::patch('/tickets/{id}/archivar',        [TicketsController::class, 'toggleArchivar']);
+
+        // Mensajes / Conversación
+        Route::post('/tickets/{id}/messages',         [TicketsController::class, 'storeMessage']);
+
+        // Configuración (datos para el formulario de creación)
+        Route::get('/config',                         [TicketsController::class, 'config']);
+
+        // Métricas (contadores del sidebar)
+        Route::get('/metricas',                       [TicketsController::class, 'metricas']);
+    });
 });
 
 // Ruta pública para OnlyOffice (sin token)

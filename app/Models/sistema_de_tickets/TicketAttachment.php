@@ -16,10 +16,16 @@ class TicketAttachment extends Model
         'ticket_id',
         'ticket_message_id',
         'user_id',
+        'documento_id',      // FK opcional al sistema de documentos
+        'es_url_externa',    // true cuando file_path contiene una URL externa
         'nombre',
         'file_path',
         'mime_type',
         'tamanio',
+    ];
+
+    protected $casts = [
+        'es_url_externa' => 'boolean',
     ];
 
     public function ticket()
@@ -38,10 +44,15 @@ class TicketAttachment extends Model
     }
 
     /**
-     * URL pública del archivo
+     * URL pública del archivo.
+     * - Si es URL externa: file_path ya contiene la URL completa.
+     * - Si es archivo físico: construye la URL de storage.
      */
     public function getFileUrlAttribute(): string
     {
+        if ($this->es_url_externa) {
+            return $this->file_path;
+        }
         return url('storage/' . $this->file_path);
     }
 }

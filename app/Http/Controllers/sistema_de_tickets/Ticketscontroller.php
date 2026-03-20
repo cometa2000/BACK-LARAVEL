@@ -11,9 +11,15 @@ use App\Models\sistema_de_tickets\TicketMessage;
 use App\Models\sistema_de_tickets\TicketAttachment;
 use App\Models\sistema_de_tickets\TicketStatusHistory;
 use App\Models\sistema_de_tickets\TicketAssignment;
+use App\Models\sistema_de_tickets\TicketFavorito;
+use App\Models\sistema_de_tickets\TicketArchivado;
 use App\Models\User;
 use App\Models\Configuration\Sucursale;
 use Spatie\Permission\Models\Role;
+use App\Models\documents\Documentos;
+use App\Models\sistema_de_tickets\TicketTarea;
+use App\Models\tasks\Tareas;
+use App\Models\tasks\Grupos;
 
 class TicketsController extends Controller
 {
@@ -44,21 +50,31 @@ class TicketsController extends Controller
             // ── Filtro por vista ──
             switch ($vista) {
                 case 'bandeja':
-                    // Tickets asignados al usuario actual
                     $query->where('asignado_id', $user->id)
-                          ->whereNotIn('estado', ['cerrado', 'rechazado'])
-                          ->where('archivado', false);
+                          ->whereNotIn('estado', ['cerrado', 'rechazado']);
+                    if ($this->pivotTablesExist()) {
+                        $query->whereDoesntHave('archivadosPor', fn($q) => $q->where('user_id', $user->id));
+                    } else {
+                        $query->where('archivado', false);
+                    }
                     break;
 
                 case 'enviados':
-                    // Tickets creados por el usuario
-                    $query->where('creador_id', $user->id)
-                          ->where('archivado', false);
+                    $query->where('creador_id', $user->id);
+                    if ($this->pivotTablesExist()) {
+                        $query->whereDoesntHave('archivadosPor', fn($q) => $q->where('user_id', $user->id));
+                    } else {
+                        $query->where('archivado', false);
+                    }
                     break;
 
                 case 'en_proceso':
-                    $query->where('estado', 'en_proceso')
-                          ->where('archivado', false);
+                    $query->where('estado', 'en_proceso');
+                    if ($this->pivotTablesExist()) {
+                        $query->whereDoesntHave('archivadosPor', fn($q) => $q->where('user_id', $user->id));
+                    } else {
+                        $query->where('archivado', false);
+                    }
                     if (!$esSede) {
                         // Sucursal: solo los suyos
                         $query->where(function($q) use ($user) {
@@ -69,8 +85,12 @@ class TicketsController extends Controller
                     break;
 
                 case 'finalizados':
-                    $query->whereIn('estado', ['resuelto', 'cerrado'])
-                          ->where('archivado', false);
+                    $query->whereIn('estado', ['resuelto', 'cerrado']);
+                    if ($this->pivotTablesExist()) {
+                        $query->whereDoesntHave('archivadosPor', fn($q) => $q->where('user_id', $user->id));
+                    } else {
+                        $query->where('archivado', false);
+                    }
                     if (!$esSede) {
                         $query->where(function($q) use ($user) {
                             $q->where('creador_id', $user->id)
@@ -80,21 +100,21 @@ class TicketsController extends Controller
                     break;
 
                 case 'archivados':
-                    $query->where('archivado', true);
-                    if (!$esSede) {
-                        $query->where(function($q) use ($user) {
-                            $q->where('creador_id', $user->id)
-                              ->orWhere('asignado_id', $user->id);
-                        });
+                    if ($this->pivotTablesExist()) {
+                        $query->whereHas('archivadosPor', fn($q) => $q->where('user_id', $user->id));
+                    } else {
+                        $query->where('archivado', true)
+                              ->where(fn($q) => $q->where('creador_id', $user->id)->orWhere('asignado_id', $user->id));
                     }
                     break;
 
                 case 'favoritos':
-                    $query->where('es_favorito', true)
-                          ->where(function($q) use ($user) {
-                              $q->where('creador_id', $user->id)
-                                ->orWhere('asignado_id', $user->id);
-                          });
+                    if ($this->pivotTablesExist()) {
+                        $query->whereHas('favoritosPor', fn($q) => $q->where('user_id', $user->id));
+                    } else {
+                        $query->where('es_favorito', true)
+                              ->where(fn($q) => $q->where('creador_id', $user->id)->orWhere('asignado_id', $user->id));
+                    }
                     break;
 
                 default:
@@ -127,7 +147,7 @@ class TicketsController extends Controller
             return response()->json([
                 'message' => 200,
                 'total'   => $tickets->total(),
-                'tickets' => $tickets->map(fn($t) => $this->formatTicketResumen($t))->values(),
+                'tickets' => $tickets->map(fn($t) => $this->formatTicketResumen($t, $user))->values(),
             ]);
 
         } catch (\Exception $e) {
@@ -158,7 +178,7 @@ class TicketsController extends Controller
 
             return response()->json([
                 'message' => 200,
-                'ticket'  => $this->formatTicketDetalle($ticket),
+                'ticket'  => $this->formatTicketDetalle($ticket, auth('api')->user()),
             ]);
 
         } catch (\Exception $e) {
@@ -244,7 +264,7 @@ class TicketsController extends Controller
                 'comentario'      => 'Ticket creado',
             ]);
 
-            // ── Guardar adjuntos si vienen ──
+            // ── TIPO 1: Archivos nuevos ──
             if ($request->hasFile('adjuntos')) {
                 foreach ($request->file('adjuntos') as $archivo) {
                     $path = $archivo->store("tickets/{$ticket->id}", 'public');
@@ -259,13 +279,47 @@ class TicketsController extends Controller
                 }
             }
 
+            // ── TIPO 2: Documentos existentes del sistema de archivos ──
+            if ($request->has('documento_ids')) {
+                foreach ($request->input('documento_ids', []) as $documentoId) {
+                    $doc = Documentos::find($documentoId);
+                    if (!$doc || $doc->type !== 'file') continue;
+                    TicketAttachment::create([
+                        'ticket_id'    => $ticket->id,
+                        'user_id'      => $user->id,
+                        'nombre'       => $doc->name,
+                        'file_path'    => $doc->file_path,
+                        'mime_type'    => $doc->mime_type ?? 'application/octet-stream',
+                        'tamanio'      => $doc->size ?? 0,
+                        'documento_id' => $doc->id,
+                    ]);
+                }
+            }
+
+            // ── TIPO 3: URLs externas ──
+            if ($request->has('adjuntos_url')) {
+                $urls = json_decode($request->input('adjuntos_url'), true) ?? [];
+                foreach ($urls as $enlace) {
+                    if (empty($enlace['url'])) continue;
+                    TicketAttachment::create([
+                        'ticket_id'      => $ticket->id,
+                        'user_id'        => $user->id,
+                        'nombre'         => $enlace['titulo'] ?? $enlace['url'],
+                        'file_path'      => $enlace['url'],
+                        'mime_type'      => 'text/url',
+                        'tamanio'        => 0,
+                        'es_url_externa' => true,
+                    ]);
+                }
+            }
+
             $ticket->load(['creador:id,name,surname,avatar', 'asignado:id,name,surname,avatar', 'sucursale:id,name', 'sucursalDestino:id,name', 'rolDestino:id,name', 'attachments']);
 
             Log::info('Ticket creado', ['ticket_id' => $ticket->id, 'folio' => $ticket->folio]);
 
             return response()->json([
                 'message' => 200,
-                'ticket'  => $this->formatTicketResumen($ticket),
+                'ticket'  => $this->formatTicketResumen($ticket, auth('api')->user()),
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -317,7 +371,7 @@ class TicketsController extends Controller
 
             return response()->json([
                 'message' => 200,
-                'ticket'  => $this->formatTicketResumen($ticket),
+                'ticket'  => $this->formatTicketResumen($ticket, auth('api')->user()),
             ]);
 
         } catch (\Exception $e) {
@@ -368,21 +422,12 @@ class TicketsController extends Controller
             $nuevoEstado    = $request->estado;
             $estadoAnterior = $ticket->estado;
 
-            // ── Permisos por estado ──
-            // • Sede (huezo): puede cambiar a cualquier estado
-            // • Franquiciatario ASIGNADO al ticket: puede cambiar a cualquier estado
-            // • Resto de usuarios de sucursal: solo en_proceso y en_espera
-            $esFranquiciatarioAsignado = $user->hasRole('Franquiciatario')
-                                        && $ticket->asignado_id === $user->id;
-
-            if (!$esSede && !$esFranquiciatarioAsignado && !$user->hasRole('Administrador')) {
-                $estadosPermitidos = ['en_proceso', 'en_espera'];
-                if (!in_array($nuevoEstado, $estadosPermitidos)) {
-                    return response()->json([
-                        'message'      => 403,
-                        'message_text' => 'No tienes permiso para cambiar a este estado',
-                    ], 403);
-                }
+            // ── Permiso: SOLO el usuario asignado al ticket puede cambiar su estado ──
+            if ((int)$ticket->asignado_id !== (int)$user->id) {
+                return response()->json([
+                    'message'      => 403,
+                    'message_text' => 'Solo el responsable asignado puede cambiar el estado del ticket.',
+                ], 403);
             }
 
             // Actualizar fechas automáticas
@@ -458,20 +503,56 @@ class TicketsController extends Controller
     }
 
     // ================================================================
-    // TOGGLE FAVORITO / ARCHIVAR
+    // TOGGLE FAVORITO / ARCHIVAR  —  INDIVIDUALES POR USUARIO
+    // Usa tablas pivot: ticket_favoritos / ticket_archivados.
+    // Cada usuario mantiene su propio estado independiente.
     // ================================================================
     public function toggleFavorito(string $id)
     {
-        $ticket = Ticket::findOrFail($id);
-        $ticket->update(['es_favorito' => !$ticket->es_favorito]);
-        return response()->json(['message' => 200, 'es_favorito' => $ticket->es_favorito]);
+        try {
+            $user   = auth('api')->user();
+            $ticket = Ticket::findOrFail($id);
+
+            $registro = TicketFavorito::where('ticket_id', $ticket->id)
+                                       ->where('user_id',   $user->id)
+                                       ->first();
+            if ($registro) {
+                $registro->delete();
+                $esFavorito = false;
+            } else {
+                TicketFavorito::create(['ticket_id' => $ticket->id, 'user_id' => $user->id]);
+                $esFavorito = true;
+            }
+
+            return response()->json(['message' => 200, 'es_favorito' => $esFavorito]);
+        } catch (\Exception $e) {
+            Log::error('TicketsController@toggleFavorito', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 500, 'error' => 'Error al actualizar favorito'], 500);
+        }
     }
 
     public function toggleArchivar(string $id)
     {
-        $ticket = Ticket::findOrFail($id);
-        $ticket->update(['archivado' => !$ticket->archivado]);
-        return response()->json(['message' => 200, 'archivado' => $ticket->archivado]);
+        try {
+            $user   = auth('api')->user();
+            $ticket = Ticket::findOrFail($id);
+
+            $registro = TicketArchivado::where('ticket_id', $ticket->id)
+                                        ->where('user_id',   $user->id)
+                                        ->first();
+            if ($registro) {
+                $registro->delete();
+                $archivado = false;
+            } else {
+                TicketArchivado::create(['ticket_id' => $ticket->id, 'user_id' => $user->id]);
+                $archivado = true;
+            }
+
+            return response()->json(['message' => 200, 'archivado' => $archivado]);
+        } catch (\Exception $e) {
+            Log::error('TicketsController@toggleArchivar', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 500, 'error' => 'Error al archivar ticket'], 500);
+        }
     }
 
     // ================================================================
@@ -503,7 +584,7 @@ class TicketsController extends Controller
                 $ticket->update(['fecha_primera_respuesta' => now()]);
             }
 
-            // ── Adjuntos del mensaje ──
+            // ── TIPO 1: Archivos nuevos (subidos por el usuario) ──
             if ($request->hasFile('adjuntos')) {
                 foreach ($request->file('adjuntos') as $archivo) {
                     $path = $archivo->store("tickets/{$ticket->id}/messages", 'public');
@@ -515,6 +596,44 @@ class TicketsController extends Controller
                         'file_path'         => $path,
                         'mime_type'         => $archivo->getMimeType(),
                         'tamanio'           => $archivo->getSize(),
+                    ]);
+                }
+            }
+
+            // ── TIPO 2: Documentos existentes del sistema de archivos (sin clonar) ──
+            if ($request->has('documento_ids')) {
+                $documentoIds = $request->input('documento_ids', []);
+                foreach ($documentoIds as $documentoId) {
+                    $doc = Documentos::find($documentoId);
+                    if (!$doc || $doc->type !== 'file') continue;
+
+                    TicketAttachment::create([
+                        'ticket_id'         => $ticket->id,
+                        'ticket_message_id' => $message->id,
+                        'user_id'           => $user->id,
+                        'nombre'            => $doc->name,
+                        'file_path'         => $doc->file_path,   // Referencia al mismo path — sin clonar
+                        'mime_type'         => $doc->mime_type ?? 'application/octet-stream',
+                        'tamanio'           => $doc->size ?? 0,
+                        'documento_id'      => $doc->id,          // FK opcional para rastrear origen
+                    ]);
+                }
+            }
+
+            // ── TIPO 3: URLs externas ──
+            if ($request->has('adjuntos_url')) {
+                $urls = json_decode($request->input('adjuntos_url'), true) ?? [];
+                foreach ($urls as $enlace) {
+                    if (empty($enlace['url'])) continue;
+                    TicketAttachment::create([
+                        'ticket_id'         => $ticket->id,
+                        'ticket_message_id' => $message->id,
+                        'user_id'           => $user->id,
+                        'nombre'            => $enlace['titulo'] ?? $enlace['url'],
+                        'file_path'         => $enlace['url'],    // La URL se guarda en file_path
+                        'mime_type'         => 'text/url',
+                        'tamanio'           => 0,
+                        'es_url_externa'    => true,
                     ]);
                 }
             }
@@ -589,22 +708,36 @@ class TicketsController extends Controller
                   });
 
             // Conteos por vista del sidebar
+            // Usar tabla pivot si ya fue migrada, o la columna legacy si no
+            $usaPivot = $this->pivotTablesExist();
+            $excluirArchivados = function($q) use ($user, $usaPivot) {
+                if ($usaPivot) {
+                    $q->whereDoesntHave('archivadosPor', fn($sq) => $sq->where('user_id', $user->id));
+                } else {
+                    $q->where('archivado', false);
+                }
+            };
+
             $bandeja     = (clone $base)->where('asignado_id', $user->id)
                                         ->whereNotIn('estado', ['cerrado', 'rechazado'])
-                                        ->where('archivado', false)->count();
+                                        ->where($excluirArchivados)->count();
 
             $enviados    = (clone $base)->where('creador_id', $user->id)
-                                        ->where('archivado', false)->count();
+                                        ->where($excluirArchivados)->count();
 
             $en_proceso  = (clone $base)->where('estado', 'en_proceso')
-                                        ->where('archivado', false)->count();
+                                        ->where($excluirArchivados)->count();
 
             $finalizados = (clone $base)->whereIn('estado', ['resuelto', 'cerrado'])
-                                        ->where('archivado', false)->count();
+                                        ->where($excluirArchivados)->count();
 
-            $archivados  = (clone $base)->where('archivado', true)->count();
+            $archivados  = $this->pivotTablesExist()
+                ? (clone $base)->whereHas('archivadosPor', fn($q) => $q->where('user_id', $user->id))->count()
+                : (clone $base)->where('archivado', true)->count();
 
-            $favoritos   = (clone $base)->where('es_favorito', true)->count();
+            $favoritos   = $this->pivotTablesExist()
+                ? (clone $base)->whereHas('favoritosPor', fn($q) => $q->where('user_id', $user->id))->count()
+                : (clone $base)->where('es_favorito', true)->count();
 
             $vencidos    = (clone $base)->whereNotNull('fecha_limite')
                                         ->whereDate('fecha_limite', '<', now())
@@ -639,7 +772,25 @@ class TicketsController extends Controller
     // ================================================================
     // HELPERS PRIVADOS
     // ================================================================
-    private function formatTicketResumen($ticket): array
+
+    /**
+     * Indica si las tablas pivot de favoritos/archivados ya existen en la BD.
+     * Permite degradar graciosamente si la migración está pendiente.
+     */
+    private function pivotTablesExist(): bool
+    {
+        static $checked = null;
+        if ($checked !== null) return $checked;
+        try {
+            \Illuminate\Support\Facades\DB::table('ticket_favoritos')->limit(1)->get();
+            $checked = true;
+        } catch (\Exception $e) {
+            $checked = false;
+        }
+        return $checked;
+    }
+
+    private function formatTicketResumen($ticket, $user = null): array
     {
         return [
             'id'              => $ticket->id,
@@ -651,8 +802,14 @@ class TicketsController extends Controller
             'estado'          => $ticket->estado,
             'tipo_origen'     => $ticket->tipo_origen,
             'tipo_destino'    => $ticket->tipo_destino,
-            'es_favorito'     => $ticket->es_favorito,
-            'archivado'       => $ticket->archivado,
+            // Estado individual por usuario — con fallback por si las tablas pivot
+            // aún no existen en el servidor (migración pendiente).
+            'es_favorito'     => ($user && $this->pivotTablesExist())
+                ? $ticket->favoritosPor()->where('user_id', $user->id)->exists()
+                : (bool)($ticket->es_favorito ?? false),
+            'archivado'       => ($user && $this->pivotTablesExist())
+                ? $ticket->archivadosPor()->where('user_id', $user->id)->exists()
+                : (bool)($ticket->archivado ?? false),
             'fecha_limite'    => $ticket->fecha_limite?->format('Y-m-d'),
             'fecha_cierre'    => $ticket->fecha_cierre?->format('Y-m-d H:i'),
             'is_vencido'      => $ticket->isVencido(),
@@ -675,9 +832,9 @@ class TicketsController extends Controller
         ];
     }
 
-    private function formatTicketDetalle($ticket): array
+    private function formatTicketDetalle($ticket, $user = null): array
     {
-        $base = $this->formatTicketResumen($ticket);
+        $base = $this->formatTicketResumen($ticket, $user);
 
         $base['messages'] = $ticket->messages->map(fn($m) => $this->formatMessage($m));
         $base['attachments'] = $ticket->attachments->map(fn($a) => $this->formatAttachment($a));
@@ -722,12 +879,133 @@ class TicketsController extends Controller
 
     private function formatAttachment($attachment): array
     {
+        // Si es URL externa, file_path ya contiene la URL completa
+        $esUrlExterna = $attachment->es_url_externa ?? ($attachment->mime_type === 'text/url');
+        $fileUrl = $esUrlExterna
+            ? $attachment->file_path
+            : url('storage/' . $attachment->file_path);
+
         return [
-            'id'        => $attachment->id,
-            'nombre'    => $attachment->nombre,
-            'mime_type' => $attachment->mime_type,
-            'tamanio'   => $attachment->tamanio,
-            'file_url'  => url('storage/' . $attachment->file_path),
+            'id'             => $attachment->id,
+            'nombre'         => $attachment->nombre,
+            'mime_type'      => $attachment->mime_type,
+            'tamanio'        => $attachment->tamanio,
+            'file_url'       => $fileUrl,
+            'es_url_externa' => $esUrlExterna,
+            'documento_id'   => $attachment->documento_id ?? null,
+        ];
+    }
+
+    public function tareasDisponibles()
+    {
+        try {
+            $user = auth('api')->user();
+
+            $tareas = Tareas::with(['lista:id,name', 'grupo:id,name,workspace_id', 'checklists'])
+                ->where(function ($q) use ($user) {
+                    // Tareas propias (creadas por el usuario)
+                    $q->where('user_id', $user->id)
+                      // O en grupos donde el usuario es dueño o tiene acceso compartido
+                      ->orWhereHas('grupo', function ($gq) use ($user) {
+                            $gq->where('user_id', $user->id)
+                               ->orWhereHas('sharedUsers', fn($mq) => $mq->where('user_id', $user->id));
+                        })
+                      // O asignadas directamente al usuario
+                      ->orWhereHas('assignedUsers', fn($aq) => $aq->where('user_id', $user->id));
+                })
+                ->whereNull('deleted_at')
+                ->orderBy('name', 'asc')
+                ->get();
+
+            $data = $tareas->map(function ($tarea) {
+                return [
+                    'id'         => $tarea->id,
+                    'name'       => $tarea->name,
+                    'status'     => $tarea->status,
+                    'priority'   => $tarea->priority,
+                    'due_date'   => $tarea->due_date,
+                    'grupo_id'   => $tarea->grupo_id,
+                    'grupo_name' => $tarea->grupo?->name,
+                    'lista_id'   => $tarea->lista_id,
+                    'lista_name' => $tarea->lista?->name,
+                    // progreso de checklists
+                    'total_checklist_progress' => $tarea->getTotalChecklistProgress(),
+                ];
+            });
+
+            return response()->json(['message' => 200, 'tareas' => $data]);
+
+        } catch (\Exception $e) {
+            \Log::error('TicketsController@tareasDisponibles', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 500, 'error' => 'Error al obtener tareas'], 500);
+        }
+    }
+
+    public function adjuntarTarea(Request $request, $ticketId)
+    {
+        try {
+            $user   = auth('api')->user();
+            $ticket = Ticket::findOrFail($ticketId);
+
+            $tareaId   = $request->input('tarea_id');
+            $mensajeId = $request->input('ticket_message_id'); // nullable
+
+            $tarea = Tareas::findOrFail($tareaId);
+
+            $registro = TicketTarea::firstOrCreate(
+                [
+                    'ticket_id'         => $ticket->id,
+                    'tarea_id'          => $tarea->id,
+                    'ticket_message_id' => $mensajeId ?: null,
+                ],
+                ['user_id' => $user->id]
+            );
+
+            return response()->json([
+                'message'         => 200,
+                'ticket_tarea'    => $this->formatTicketTarea($registro->load('tarea')),
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('TicketsController@adjuntarTarea', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 500, 'error' => 'Error al adjuntar tarea'], 500);
+        }
+    }
+
+    /**
+     * DELETE /sistema-de-tickets/tickets/{ticketId}/adjuntar-tarea/{ticketTareaId}
+     */
+    public function quitarTarea($ticketId, $ticketTareaId)
+    {
+        try {
+            $registro = TicketTarea::where('ticket_id', $ticketId)
+                                    ->where('id', $ticketTareaId)
+                                    ->firstOrFail();
+            $registro->delete();
+
+            return response()->json(['message' => 200]);
+
+        } catch (\Exception $e) {
+            \Log::error('TicketsController@quitarTarea', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 500, 'error' => 'Error al quitar tarea'], 500);
+        }
+    }
+
+    // ── HELPER PRIVADO ───────────────────────────────────────────────
+    private function formatTicketTarea(TicketTarea $tt): array
+    {
+        $tarea = $tt->tarea;
+        return [
+            'id'                      => $tt->id,
+            'ticket_message_id'       => $tt->ticket_message_id,
+            'tarea_id'                => $tarea?->id,
+            'tarea_name'              => $tarea?->name,
+            'tarea_status'            => $tarea?->status,
+            'tarea_priority'          => $tarea?->priority,
+            'tarea_due_date'          => $tarea?->due_date,
+            'tarea_grupo_id'          => $tarea?->grupo_id,
+            'tarea_progress'          => $tarea ? $tarea->getTotalChecklistProgress() : 0,
+            'created_at'              => $tt->created_at,
         ];
     }
 }

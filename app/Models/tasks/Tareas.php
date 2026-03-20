@@ -76,7 +76,7 @@ class Tareas extends Model
         return $this->belongsTo(Etiqueta::class);
     }
 
-    public function adjuntos()
+    public function adjuntosRelacion()
     {
         return $this->hasMany(TareaAdjunto::class, 'tarea_id');
     }

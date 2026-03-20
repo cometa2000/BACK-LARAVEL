@@ -8,6 +8,8 @@ use Spatie\Permission\Models\Role;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\sistema_de_tickets\TicketFavorito;
+use App\Models\sistema_de_tickets\TicketArchivado;
 
 class Ticket extends Model
 {
@@ -104,6 +106,24 @@ class Ticket extends Model
                     ->orderBy('created_at', 'asc');
     }
 
+    /**
+     * Usuarios que marcaron este ticket como favorito (individual).
+     * Tabla pivot: ticket_favoritos
+     */
+    public function favoritosPor()
+    {
+        return $this->hasMany(TicketFavorito::class, 'ticket_id');
+    }
+
+    /**
+     * Usuarios que archivaron este ticket (individual).
+     * Tabla pivot: ticket_archivados
+     */
+    public function archivadosPor()
+    {
+        return $this->hasMany(TicketArchivado::class, 'ticket_id');
+    }
+
     // ================================================================
     // MÉTODOS AUXILIARES
     // ================================================================
@@ -155,5 +175,24 @@ class Ticket extends Model
     {
         if (!$this->fecha_resolucion) return null;
         return round($this->created_at->diffInMinutes($this->fecha_resolucion) / 60, 1);
+    }
+
+    /**
+     * Tareas adjuntas al ticket principal (ticket_message_id IS NULL)
+     */
+    public function tareas()
+    {
+        return $this->hasMany(TicketTarea::class, 'ticket_id')
+                    ->whereNull('ticket_message_id')
+                    ->with('tarea:id,name,status,priority,due_date,grupo_id,lista_id');
+    }
+
+    /**
+     * Todas las tareas adjuntas (principal + hilo de mensajes)
+     */
+    public function todasLasTareas()
+    {
+        return $this->hasMany(TicketTarea::class, 'ticket_id')
+                    ->with('tarea:id,name,status,priority,due_date,grupo_id,lista_id');
     }
 }

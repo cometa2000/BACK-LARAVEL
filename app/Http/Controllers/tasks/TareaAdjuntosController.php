@@ -18,7 +18,7 @@ class TareaAdjuntosController extends Controller
     {
         try {
             $tarea = Tareas::findOrFail($tareaId);
-            $adjuntos = $tarea->adjuntos;
+            $adjuntos = $tarea->adjuntosRelacion;
 
             $enlaces = $adjuntos->where('tipo', 'enlace')->values();
             $archivos = $adjuntos->where('tipo', 'archivo')->map(function($adjunto) {
@@ -27,7 +27,6 @@ class TareaAdjuntosController extends Controller
                     'nombre' => $adjunto->nombre,
                     'tipo' => $adjunto->mime_type,
                     'tiempo_subida' => $adjunto->created_at->toISOString(),
-                    'preview' => $adjunto->preview,
                     'file_url' => $adjunto->file_path 
                         ? url('storage/' . $adjunto->file_path) 
                         : null
@@ -86,13 +85,13 @@ class TareaAdjuntosController extends Controller
                 ]);
 
                 $file = $request->file('file');
-                $path = $file->store('tarea_adjuntos', 'public');
 
-                // Preview para imágenes
                 $preview = null;
                 if (str_starts_with($file->getMimeType(), 'image/')) {
-                    $preview = base64_encode(file_get_contents($file->getRealPath()));
+                    $preview = base64_encode(file_get_contents($file->getRealPath())); // ← archivo aún existe
                 }
+
+                $path = $file->store('tarea_adjuntos', 'public');   // ← mover al final
 
                 $adjunto = TareaAdjunto::create([
                     'tarea_id' => $tareaId,
@@ -111,7 +110,6 @@ class TareaAdjuntosController extends Controller
                         'nombre' => $adjunto->nombre,
                         'tipo' => $adjunto->mime_type,
                         'tiempo_subida' => $adjunto->created_at->toISOString(),
-                        'preview' => $adjunto->preview,
                         'file_url' => url('storage/' . $adjunto->file_path)
                     ]
                 ]);

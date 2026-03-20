@@ -40,4 +40,13 @@ class TicketMessage extends Model
     {
         return $this->hasMany(TicketAttachment::class, 'ticket_message_id');
     }
+
+    /**
+     * Tareas adjuntas a este mensaje específico del hilo
+     */
+    public function ticketTareas()
+    {
+        return $this->hasMany(TicketTarea::class, 'ticket_message_id')
+                    ->with('tarea:id,name,status,priority,due_date,grupo_id,lista_id');
+    }
 }

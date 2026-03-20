@@ -258,6 +258,13 @@ Route::group([
 
         // Métricas (contadores del sidebar)
         Route::get('/metricas',                       [TicketsController::class, 'metricas']);
+
+        // Tareas disponibles para adjuntar en un ticket
+        Route::get('/tareas-disponibles', [TicketsController::class, 'tareasDisponibles']);
+
+        // Adjuntar / quitar tarea en ticket o hilo
+        Route::post('/tickets/{id}/adjuntar-tarea',               [TicketsController::class, 'adjuntarTarea']);
+        Route::delete('/tickets/{ticketId}/adjuntar-tarea/{ttId}', [TicketsController::class, 'quitarTarea']);
     });
 });
 

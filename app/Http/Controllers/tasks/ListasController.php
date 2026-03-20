@@ -19,7 +19,7 @@ class ListasController extends Controller
             
             $query = Lista::with([
                 'tareas.etiquetas',
-                'tareas.adjuntos',
+                'tareas.adjuntosRelacion',
                 'tareas.checklists.items',
                 'tareas.user',
                 'tareas.comentarios',
@@ -43,8 +43,9 @@ class ListasController extends Controller
                         $archivos = [];
                         
                         // Procesar adjuntos si existen
-                        if (isset($tarea['adjuntos']) && is_array($tarea['adjuntos'])) {
-                            foreach ($tarea['adjuntos'] as $adjunto) {
+                        $rawAdjuntos = $tarea['adjuntos_relacion'] ?? [];
+                        if (is_array($rawAdjuntos)) {
+                            foreach ($rawAdjuntos as $adjunto) {
                                 if ($adjunto['tipo'] === 'enlace') {
                                     $enlaces[] = [
                                         'id' => $adjunto['id'],
@@ -57,7 +58,6 @@ class ListasController extends Controller
                                         'nombre' => $adjunto['nombre'],
                                         'tipo' => $adjunto['mime_type'] ?? 'unknown',
                                         'tiempo_subida' => $adjunto['created_at'] ?? null,
-                                        'preview' => $adjunto['preview'] ?? null,
                                         'file_url' => isset($adjunto['file_path']) 
                                             ? url('storage/' . $adjunto['file_path']) 
                                             : null
@@ -65,6 +65,7 @@ class ListasController extends Controller
                                 }
                             }
                         }
+                        unset($tarea['adjuntos_relacion']);
                         
                         // Reemplazar adjuntos con el formato correcto
                         $tarea['adjuntos'] = [

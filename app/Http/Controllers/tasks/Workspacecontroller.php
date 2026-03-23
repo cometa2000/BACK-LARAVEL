@@ -10,6 +10,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\WorkspaceCreadoMail;
 
 class WorkspaceController extends Controller
 {
@@ -225,6 +227,19 @@ class WorkspaceController extends Controller
                 'id' => $workspace->id,
                 'name' => $workspace->name
             ]);
+
+            try {
+                Mail::to($user->email)->send(new WorkspaceCreadoMail(
+                    $user->name,
+                    $workspace->name,
+                    $workspace->description ?? null,
+                    $workspace->color ?? '#667eea'
+                ));
+                Log::info('📧 WorkspaceCreadoMail enviado', ['user_id' => $user->id]);
+            } catch (\Exception $mailEx) {
+                // El fallo del correo no debe interrumpir la respuesta
+                Log::error('❌ Error al enviar WorkspaceCreadoMail', ['error' => $mailEx->getMessage()]);
+            }
 
             return response()->json([
                 'message' => 200,

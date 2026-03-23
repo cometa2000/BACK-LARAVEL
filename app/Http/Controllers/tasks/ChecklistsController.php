@@ -10,6 +10,9 @@ use App\Models\tasks\Actividad;
 use App\Models\tasks\Tareas;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\ChecklistItemAsignadoAsignadorMail;
+use App\Mail\ChecklistItemAsignadoAsignadoMail;
 
 class ChecklistsController extends Controller
 {
@@ -205,6 +208,52 @@ class ChecklistsController extends Controller
         // Cargar la relación para la respuesta
         $item->load('assignedUsers');
 
+        if ($request->has('assigned_users') && !empty($request->assigned_users)) {
+            $tarea     = \App\Models\tasks\Tareas::find($checklistId ? $checklist->tarea_id : $tareaId);
+            $grupo     = $tarea ? \App\Models\tasks\Grupos::find($tarea->grupo_id) : null;
+            $asignador = auth()->user();
+ 
+            if ($tarea && $grupo) {
+                $usuariosAsignadosData = $item->assignedUsers
+                    ->map(fn($u) => ['name' => $u->name, 'email' => $u->email])
+                    ->values()
+                    ->toArray();
+ 
+                // ✉️ Asignador
+                try {
+                    Mail::to($asignador->email)->send(new ChecklistItemAsignadoAsignadorMail(
+                        $asignador->name,
+                        $usuariosAsignadosData,
+                        $item->name,
+                        $checklist->name,
+                        $tarea->name,
+                        $grupo->name,
+                        $grupo->id
+                    ));
+                } catch (\Exception $mailEx) {
+                    Log::error('❌ Error ChecklistItemAsignadoAsignadorMail (addItem)', ['error' => $mailEx->getMessage()]);
+                }
+ 
+                // ✉️ Cada asignado
+                foreach ($item->assignedUsers as $asignado) {
+                    try {
+                        Mail::to($asignado->email)->send(new ChecklistItemAsignadoAsignadoMail(
+                            $asignado->name,
+                            $asignador->name,
+                            $item->name,
+                            $checklist->name,
+                            $tarea->name,
+                            $grupo->name,
+                            $grupo->id,
+                            $item->due_date ? $item->due_date->format('Y-m-d') : null
+                        ));
+                    } catch (\Exception $mailEx) {
+                        Log::error('❌ Error ChecklistItemAsignadoAsignadoMail (addItem)', ['error' => $mailEx->getMessage(), 'user_id' => $asignado->id]);
+                    }
+                }
+            }
+        }
+
         // Registrar actividad
         Actividad::create([
             'type' => 'checklist_item_added',
@@ -394,11 +443,68 @@ class ChecklistsController extends Controller
             ->where('id', $itemId)
             ->firstOrFail();
 
+        // Guardar asignados PREVIOS para detectar los nuevos
+        $previosIds = $item->assignedUsers()->pluck('users.id')->toArray();
+ 
         // Sincronizar usuarios (esto reemplaza los existentes)
         $item->assignedUsers()->sync($request->user_ids);
-
+ 
         // Cargar usuarios para la respuesta
         $item->load('assignedUsers');
+ 
+        // IDs recién agregados (no estaban antes)
+        $nuevosIds = array_diff($request->user_ids, $previosIds);
+ 
+        if (!empty($nuevosIds)) {
+            // Contexto completo para los correos
+            $tarea  = \App\Models\tasks\Tareas::find($checklist->tarea_id);
+            $grupo  = $tarea ? \App\Models\tasks\Grupos::find($tarea->grupo_id) : null;
+            $asignador = auth()->user();
+ 
+            if ($tarea && $grupo) {
+                $usuariosAsignadosData = $item->assignedUsers
+                    ->whereIn('id', $nuevosIds)
+                    ->map(fn($u) => ['name' => $u->name, 'email' => $u->email])
+                    ->values()
+                    ->toArray();
+ 
+                // ✉️ Correo al ASIGNADOR (resumen de quiénes fueron asignados)
+                try {
+                    Mail::to($asignador->email)->send(new ChecklistItemAsignadoAsignadorMail(
+                        $asignador->name,
+                        $usuariosAsignadosData,
+                        $item->name,
+                        $checklist->name,
+                        $tarea->name,
+                        $grupo->name,
+                        $grupo->id
+                    ));
+                    Log::info('📧 ChecklistItemAsignadoAsignadorMail enviado', ['asignador_id' => $asignador->id]);
+                } catch (\Exception $mailEx) {
+                    Log::error('❌ Error ChecklistItemAsignadoAsignadorMail', ['error' => $mailEx->getMessage()]);
+                }
+ 
+                // ✉️ Correo individual a cada ASIGNADO (solo los nuevos)
+                $nuevosUsuarios = $item->assignedUsers->whereIn('id', $nuevosIds);
+                foreach ($nuevosUsuarios as $asignado) {
+                    try {
+                        Mail::to($asignado->email)->send(new ChecklistItemAsignadoAsignadoMail(
+                            $asignado->name,
+                            $asignador->name,
+                            $item->name,
+                            $checklist->name,
+                            $tarea->name,
+                            $grupo->name,
+                            $grupo->id,
+                            $item->due_date ? $item->due_date->format('Y-m-d') : null
+                        ));
+                        Log::info('📧 ChecklistItemAsignadoAsignadoMail enviado', ['asignado_id' => $asignado->id]);
+                    } catch (\Exception $mailEx) {
+                        Log::error('❌ Error ChecklistItemAsignadoAsignadoMail', ['error' => $mailEx->getMessage(), 'user_id' => $asignado->id]);
+                    }
+                }
+            }
+        }
 
         // Registrar actividad
         $userNames = User::whereIn('id', $request->user_ids)->pluck('name')->toArray();

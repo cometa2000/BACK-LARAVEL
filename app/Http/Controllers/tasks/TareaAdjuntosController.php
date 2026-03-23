@@ -86,12 +86,7 @@ class TareaAdjuntosController extends Controller
 
                 $file = $request->file('file');
 
-                $preview = null;
-                if (str_starts_with($file->getMimeType(), 'image/')) {
-                    $preview = base64_encode(file_get_contents($file->getRealPath())); // ← archivo aún existe
-                }
-
-                $path = $file->store('tarea_adjuntos', 'public');   // ← mover al final
+                $path = $file->store('tarea_adjuntos', 'public');
 
                 $adjunto = TareaAdjunto::create([
                     'tarea_id' => $tareaId,
@@ -100,7 +95,6 @@ class TareaAdjuntosController extends Controller
                     'file_path' => $path,
                     'mime_type' => $file->getMimeType(),
                     'size' => $file->getSize(),
-                    'preview' => $preview
                 ]);
 
                 return response()->json([

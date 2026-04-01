@@ -635,7 +635,7 @@ class DocumentosController extends Controller
                 "email" => $documento->user->email,
             ] : null,
             "file_path" => $documento->file_path 
-                ? env("APP_URL")."/storage/".$documento->file_path 
+                ? env("APP_URL") . "/api/documentos/" . $documento->id . "/serve"
                 : null,
             "mime_type" => $documento->mime_type,
             "size" => $documento->size,
@@ -753,7 +753,7 @@ class DocumentosController extends Controller
         return response()->json([
             "id" => $documento->id,
             "name" => $documento->name,
-            "url" => env("APP_URL")."/storage/".$documento->file_path,
+            "url" => env("APP_URL") . "/api/documentos/" . $documento->id . "/serve",
             "mime_type" => $documento->mime_type,
             "document_type" => $documentType,
             "can_edit" => $canEdit,
@@ -834,5 +834,63 @@ class DocumentosController extends Controller
         }
         
         return response()->json(['error' => 0]);
+    }
+
+    /**
+     * Servir archivo directamente (streaming seguro con autenticación).
+     * Soluciona problemas de CORS y symlinks en producción.
+     */
+    public function serve($id)
+    {
+        $documento = Documentos::findOrFail($id);
+
+        if ($documento->isFolder()) {
+            return response()->json([
+                'message' => 403,
+                'message_text' => 'No aplica para carpetas'
+            ], 403);
+        }
+
+        if (!$documento->file_path) {
+            return response()->json([
+                'message' => 404,
+                'message_text' => 'Ruta de archivo no registrada'
+            ], 404);
+        }
+
+        // En hosting compartido public/storage es carpeta real (no symlink)
+        // por eso buscamos primero ahí, luego en storage/app/public como fallback
+        $paths = [
+            public_path('storage/' . $documento->file_path),
+            storage_path('app/public/' . $documento->file_path),
+        ];
+
+        $filePath = null;
+        foreach ($paths as $candidate) {
+            if (file_exists($candidate)) {
+                $filePath = $candidate;
+                break;
+            }
+        }
+
+        if (!$filePath) {
+            Log::warning('Archivo no encontrado en disco', [
+                'documento_id' => $id,
+                'file_path'    => $documento->file_path,
+                'paths_tried'  => $paths,
+            ]);
+            return response()->json([
+                'message' => 404,
+                'message_text' => 'Archivo físico no encontrado en disco'
+            ], 404);
+        }
+
+        $mimeType = $documento->mime_type ?: mime_content_type($filePath);
+
+        return response()->file($filePath, [
+            'Content-Type'        => $mimeType,
+            'Content-Disposition' => 'inline; filename="' . $documento->name . '"',
+            'Cache-Control'       => 'private, max-age=3600',
+        ]);
     }
 }

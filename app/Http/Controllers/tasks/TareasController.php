@@ -6,6 +6,10 @@ use App\Models\tasks\Tareas;
 use Illuminate\Http\Request;
 use App\Models\tasks\Timeline;
 use App\Mail\TareaAsignadaMail;
+use App\Mail\ReactivacionSolicitanteMail;
+use App\Mail\ReactivacionPropietarioMail;
+use App\Mail\TareaReactivadaMail;
+use App\Mail\ReactivacionConfirmadaPropietarioMail;
 use App\Models\tasks\Actividad;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
@@ -233,6 +237,10 @@ class TareasController extends Controller
                 ];
             });
 
+            // 🆕 Verificar si el usuario autenticado está asignado a la tarea
+            $currentUserId = auth()->id();
+            $isAssigned = $tarea->assignedUsers->contains($currentUserId);
+
             // Construir respuesta
             $tareaData = [
                 'id' => $tarea->id,
@@ -247,38 +255,51 @@ class TareasController extends Controller
                 'grupo_id' => $tarea->grupo_id,
                 'lista_id' => $tarea->lista_id,
                 'user_id' => $tarea->user_id,
+ 
+                // ✅ FIX: Campos de notificaciones (FALTABAN — causaban que el frontend
+                //    siempre leyera undefined/false y sobreescribiera el valor guardado)
+                'notifications_enabled'          => (bool) $tarea->notifications_enabled,
+                'notification_days_before'        => $tarea->notification_days_before,
+                'notification_sent_at'            => $tarea->notification_sent_at,
+                'overdue_notification_sent_at'    => $tarea->overdue_notification_sent_at,
+
+                // 🆕 NUEVO: Indicador de si el usuario autenticado está asignado a la tarea
+                'is_assigned' => $isAssigned,
+
+                // 🆕 NUEVO: ID del propietario del grupo (para validaciones en el frontend)
+                'grupo_owner_id' => $tarea->grupo?->user_id,
                 
                 // Relaciones
                 'etiquetas' => $tarea->etiquetas,
-                'checklists' => $checklistsFormateados,  // ✅ CAMBIO AQUÍ: Usar versión formateada
+                'checklists' => $checklistsFormateados,
                 'comentarios' => $tarea->comentarios,
                 'user' => $tarea->user,
                 'lista' => $tarea->lista,
                 'grupo' => $tarea->grupo,
-
+ 
                 // Miembros asignados
                 'assigned_members' => $tarea->assignedUsers->map(function($user) {
                     return [
-                        'id' => $user->id,
-                        'name' => $user->name,
+                        'id'      => $user->id,
+                        'name'    => $user->name,
                         'surname' => $user->surname,
-                        'email' => $user->email,
-                        'avatar' => $user->avatar ? $user->avatar : null,
+                        'email'   => $user->email,
+                        'avatar'  => $user->avatar ? $user->avatar : null,
                     ];
                 }),
                 
-                // ADJUNTOS procesados
+                // Adjuntos
                 'adjuntos' => [
-                    'enlaces' => $enlaces,
+                    'enlaces'  => $enlaces,
                     'archivos' => $archivos
                 ],
                 
                 // Indicadores
-                'is_overdue' => $tarea->isOverdue(),
-                'is_due_soon' => $tarea->isDueSoon(),
+                'is_overdue'               => $tarea->isOverdue(),
+                'is_due_soon'              => $tarea->isDueSoon(),
                 'total_checklist_progress' => $tarea->getTotalChecklistProgress(),
-                'total_checklist_items' => $tarea->getTotalChecklistItems(),
-                'completed_checklist_items' => $tarea->getCompletedChecklistItems(),
+                'total_checklist_items'    => $tarea->getTotalChecklistItems(),
+                'completed_checklist_items'=> $tarea->getCompletedChecklistItems(),
                 
                 'created_at' => $tarea->created_at,
                 'updated_at' => $tarea->updated_at,
@@ -431,93 +452,189 @@ class TareasController extends Controller
         try {
             Log::info('TareasController@update - Iniciando', [
                 'tarea_id' => $id,
-                'data' => $request->all()
+                'data'     => $request->all()
             ]);
-
+ 
             $tarea = Tareas::findOrFail($id);
-
+ 
             $request->validate([
-                'name' => 'sometimes|required|string|max:150',
-                'description' => 'nullable|string',
-                'type_task' => 'sometimes|in:simple,evento',
-                'priority' => 'nullable|in:low,medium,high',
-                'start_date' => 'nullable|date',
-                'due_date' => 'nullable|date',
-                'status' => 'nullable|in:pendiente,en_progreso,completada',
-                'lista_id' => 'sometimes|exists:listas,id',
-                'notifications_enabled' => 'nullable|boolean',
-                'notification_days_before' => 'nullable|integer|min:1|max:30',
+                'name'                    => 'sometimes|required|string|max:150',
+                'description'             => 'nullable|string',
+                'type_task'               => 'sometimes|in:simple,evento',
+                'priority'                => 'nullable|in:low,medium,high',
+                'start_date'              => 'nullable|date',
+                'due_date'                => 'nullable|date',
+                'status'                  => 'nullable|in:pendiente,en_progreso,completada',
+                'lista_id'                => 'sometimes|exists:listas,id',
+                'notifications_enabled'   => 'nullable|boolean',
+                'notification_days_before'=> 'nullable|integer|min:1|max:30',
             ]);
-
+ 
             $dataToUpdate = $request->only([
                 'name', 'description', 'type_task', 'priority',
                 'start_date', 'due_date', 'status', 'lista_id',
-                'notifications_enabled', 'notification_days_before'
+                'notifications_enabled', 'notification_days_before',
             ]);
-
-            // ✅ CRÍTICO: Si cambia lista_id, actualizar grupo_id también
+ 
+            // ──────────────────────────────────────────────────────────
+            // ✅ FIX 1: Si cambia due_date → resetear AMBOS timestamps
+            //    para que el comando vuelva a evaluar la tarea
+            // ──────────────────────────────────────────────────────────
+            if (
+                isset($dataToUpdate['due_date']) &&
+                $dataToUpdate['due_date'] != optional($tarea->due_date)->toDateString()
+            ) {
+                $dataToUpdate['notification_sent_at']         = null;
+                $dataToUpdate['overdue_notification_sent_at'] = null;
+ 
+                Log::info('🔔 Timestamps de notificación reseteados por cambio de due_date', [
+                    'tarea_id'     => $id,
+                    'due_date_old' => optional($tarea->due_date)->toDateString(),
+                    'due_date_new' => $dataToUpdate['due_date'],
+                ]);
+            }
+ 
+            // ──────────────────────────────────────────────────────────
+            // ✅ FIX 2: Si cambia notification_days_before → resetear
+            //    notification_sent_at para re-evaluar el umbral
+            // ──────────────────────────────────────────────────────────
+            if (
+                isset($dataToUpdate['notification_days_before']) &&
+                $dataToUpdate['notification_days_before'] != $tarea->notification_days_before
+            ) {
+                $dataToUpdate['notification_sent_at'] = null;
+ 
+                Log::info('🔔 notification_sent_at reseteado por cambio de notification_days_before', [
+                    'tarea_id' => $id,
+                    'old'      => $tarea->notification_days_before,
+                    'new'      => $dataToUpdate['notification_days_before'],
+                ]);
+            }
+ 
+            // ──────────────────────────────────────────────────────────
+            // ✅ FIX 3: Si se activa notifications_enabled → resetear
+            //    ambos timestamps para que el comando los re-procese
+            // ──────────────────────────────────────────────────────────
+            if (
+                isset($dataToUpdate['notifications_enabled']) &&
+                $dataToUpdate['notifications_enabled'] == true &&
+                !$tarea->notifications_enabled
+            ) {
+                $dataToUpdate['notification_sent_at']         = null;
+                $dataToUpdate['overdue_notification_sent_at'] = null;
+ 
+                Log::info('🔔 Timestamps de notificación reseteados por activación de notifications_enabled', [
+                    'tarea_id' => $id,
+                ]);
+            }
+ 
+            // ──────────────────────────────────────────────────────────
+            // Si cambia lista_id → actualizar grupo_id
+            // ──────────────────────────────────────────────────────────
             if (isset($dataToUpdate['lista_id']) && $dataToUpdate['lista_id'] != $tarea->lista_id) {
                 $nuevaLista = \App\Models\tasks\Lista::findOrFail($dataToUpdate['lista_id']);
                 $dataToUpdate['grupo_id'] = $nuevaLista->grupo_id;
-                
+ 
                 Log::info('✅ grupo_id actualizado por cambio de lista', [
-                    'tarea_id' => $id,
-                    'lista_id_anterior' => $tarea->lista_id,
-                    'lista_id_nueva' => $dataToUpdate['lista_id'],
-                    'grupo_id_anterior' => $tarea->grupo_id,
-                    'grupo_id_nuevo' => $dataToUpdate['grupo_id']
+                    'tarea_id'      => $id,
+                    'lista_id_old'  => $tarea->lista_id,
+                    'lista_id_new'  => $dataToUpdate['lista_id'],
+                    'grupo_id_old'  => $tarea->grupo_id,
+                    'grupo_id_new'  => $dataToUpdate['grupo_id'],
                 ]);
-
-                // Registrar actividad del cambio
+ 
                 Actividad::create([
-                    'type' => 'moved',
+                    'type'        => 'moved',
                     'description' => 'movió la tarea a otra lista',
-                    'tarea_id' => $tarea->id,
-                    'user_id' => auth()->id()
+                    'tarea_id'    => $tarea->id,
+                    'user_id'     => auth()->id(),
                 ]);
+            }
+ 
+            // ──────────────────────────────────────────────────────────
+            // ✅ FIX 4: Detectar transición a "completada" ANTES de guardar
+            // ──────────────────────────────────────────────────────────
+            $seCompletaAhora = (
+                isset($dataToUpdate['status']) &&
+                $dataToUpdate['status'] === 'completada' &&
+                $tarea->status !== 'completada'
+            );
+
+            // ──────────────────────────────────────────────────────────
+            // 🆕 DETECCIÓN DE REACTIVACIÓN:
+            // La tarea estaba vencida y el propietario le cambia due_date
+            // a una fecha futura → notificar a los miembros asignados.
+            // Condición: la tarea estaba vencida (isOverdue() true)
+            //            Y se está enviando una nueva due_date
+            //            Y esa nueva fecha es futura (o null → la elimina).
+            // ──────────────────────────────────────────────────────────
+            $estabaVencida          = $tarea->isOverdue();
+            $seReactivaAhora        = false;
+            $nuevaDueDateParaCorreo = null; // null = se eliminó la fecha
+            // 'editada' si el dueño puso una nueva fecha, 'eliminada' si la borró
+            $accionReactivacion     = 'editada';
+
+            if ($estabaVencida && array_key_exists('due_date', $dataToUpdate)) {
+
+                if ($dataToUpdate['due_date'] === null) {
+                    // Propietario eliminó la fecha → también es una reactivación
+                    $seReactivaAhora        = true;
+                    $nuevaDueDateParaCorreo = null;
+                    $accionReactivacion     = 'eliminada';
+
+                } else {
+                    // Propietario cambió la fecha → reactivación solo si es hoy o futura
+                    $nuevaDueDateCarbon     = \Carbon\Carbon::parse($dataToUpdate['due_date'])->startOfDay();
+                    $hoy                    = now()->startOfDay();
+                    $seReactivaAhora        = $nuevaDueDateCarbon->gte($hoy);
+                    $nuevaDueDateParaCorreo = $dataToUpdate['due_date'];
+                    $accionReactivacion     = 'editada';
+                }
             }
 
             $tarea->update($dataToUpdate);
+ 
+            // Disparar notificaciones de tarea completada
+            if ($seCompletaAhora) {
+                $this->enviarNotificacionesTareaCompletada($tarea);
+            }
 
+            // Disparar correo de reactivación a miembros asignados + confirmación al propietario
+            if ($seReactivaAhora) {
+                $this->enviarNotificacionesReactivacion($tarea, $nuevaDueDateParaCorreo, $accionReactivacion);
+            }
+ 
             Log::info('TareasController@update - Tarea actualizada exitosamente', [
                 'tarea_id' => $id,
-                'grupo_id' => $tarea->grupo_id
+                'grupo_id' => $tarea->grupo_id,
             ]);
+ 
+            // Refrescar relaciones y formatear fechas explícitamente como Y-m-d
+            // para evitar que el cast 'date' de Carbon las serialice como ISO 8601
+            // con timezone (ej. "2026-03-19T06:00:00.000000Z"), lo que causaría
+            // un desfase de un día en el frontend (México = UTC-6).
+            $tarea->refresh();
+            $tarea->load(['lista', 'grupo', 'user']);
 
             return response()->json([
                 'message' => 200,
-                'tarea' => $tarea->fresh(['lista', 'grupo', 'user'])
+                'tarea'   => array_merge($tarea->toArray(), [
+                    'start_date' => $tarea->start_date ? $tarea->start_date->format('Y-m-d') : null,
+                    'due_date'   => $tarea->due_date   ? $tarea->due_date->format('Y-m-d')   : null,
+                ]),
             ]);
-
+ 
         } catch (ModelNotFoundException $e) {
-            Log::error('TareasController@update - Tarea no encontrada', [
-                'tarea_id' => $id
-            ]);
-
-            return response()->json([
-                'message' => 404,
-                'error' => 'Tarea no encontrada'
-            ], 404);
-
+            Log::error('TareasController@update - Tarea no encontrada', ['tarea_id' => $id]);
+            return response()->json(['message' => 404, 'error' => 'Tarea no encontrada'], 404);
+ 
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::error('TareasController@update - Validación fallida', [
-                'errors' => $e->errors()
-            ]);
-
-            return response()->json([
-                'message' => 422,
-                'errors' => $e->errors()
-            ], 422);
-
+            Log::error('TareasController@update - Validación fallida', ['errors' => $e->errors()]);
+            return response()->json(['message' => 422, 'errors' => $e->errors()], 422);
+ 
         } catch (\Exception $e) {
-            Log::error('TareasController@update - Error', [
-                'error' => $e->getMessage()
-            ]);
-
-            return response()->json([
-                'message' => 500,
-                'error' => 'Error al actualizar la tarea: ' . $e->getMessage()
-            ], 500);
+            Log::error('TareasController@update - Error', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 500, 'error' => 'Error al actualizar la tarea: ' . $e->getMessage()], 500);
         }
     }
 
@@ -731,6 +848,8 @@ class TareasController extends Controller
     /**
      * POST /api/tareas/{tareaId}/assign-members
      * Body: { user_ids: [1, 2, 3] }
+     *
+     * 🆕 MODIFICADO: Solo el propietario del grupo puede asignar miembros
      */
     public function assignMembers(Request $request, $tareaId)
     {
@@ -742,13 +861,14 @@ class TareasController extends Controller
 
             $tarea = Tareas::findOrFail($tareaId);
             
-            // Validar que el usuario tenga permiso (es el creador o miembro del grupo)
+            // Cargar el grupo con el propietario
             $grupo = $tarea->lista->grupo;
-            if ($grupo->user_id !== auth()->id() && 
-                !$grupo->sharedUsers->contains(auth()->id())) {
+
+            // 🆕 CAMBIO: Solo el propietario del grupo puede asignar miembros
+            if ($grupo->user_id !== auth()->id()) {
                 return response()->json([
                     'message' => 403,
-                    'message_text' => 'No tienes permiso para asignar miembros a esta tarea'
+                    'message_text' => 'Solo el propietario del grupo puede asignar miembros a las tareas'
                 ], 403);
             }
             
@@ -814,11 +934,6 @@ class TareasController extends Controller
                             'tarea_id' => $tarea->id,
                             'grupo_id' => $grupo->id
                         ]);
-                        
-                        // Log::info('✅ Correo y notificación enviados a:', [
-                        //     'email' => $usuario->email,
-                        //     'nombre' => $nombreUsuario
-                        // ]);
                         
                     } catch (\Exception $emailError) {
                         Log::error('❌ Error al enviar correo a ' . $usuario->email, [
@@ -951,6 +1066,8 @@ class TareasController extends Controller
 
     /**
      * DELETE /api/tareas/{tareaId}/unassign-member/{userId}
+     *
+     * 🆕 MODIFICADO: Solo el propietario del grupo puede desasignar miembros
      */
     public function unassignMember($tareaId, $userId)
     {
@@ -962,13 +1079,14 @@ class TareasController extends Controller
 
             $tarea = Tareas::findOrFail($tareaId);
             
-            // Validar permisos
+            // Cargar el grupo
             $grupo = $tarea->lista->grupo;
-            if ($grupo->user_id !== auth()->id() && 
-                !$grupo->sharedUsers->contains(auth()->id())) {
+
+            // 🆕 CAMBIO: Solo el propietario del grupo puede desasignar miembros
+            if ($grupo->user_id !== auth()->id()) {
                 return response()->json([
                     'message' => 403,
-                    'message_text' => 'No tienes permiso para desasignar miembros'
+                    'message_text' => 'Solo el propietario del grupo puede desasignar miembros'
                 ], 403);
             }
             
@@ -1029,6 +1147,126 @@ class TareasController extends Controller
                 'message' => 500,
                 'message_text' => 'Error al desasignar miembro'
             ], 500);
+        }
+    }
+
+    /**
+     * 🆕 POST /api/tareas/{id}/solicitar-reactivacion
+     *
+     * Un usuario asignado (no propietario) solicita que el dueño reactive
+     * una tarea vencida. El sistema envía:
+     *   - Correo 1 al SOLICITANTE: "tu solicitud fue enviada, te avisaremos"
+     *   - Correo 2 al PROPIETARIO: "tienes una solicitud de reactivación"
+     */
+    public function solicitarReactivacion($id)
+    {
+        try {
+            Log::info('TareasController@solicitarReactivacion - Iniciando', ['tarea_id' => $id]);
+
+            // Cargar tarea con todas las relaciones necesarias
+            $tarea = Tareas::with(['lista.grupo', 'assignedUsers'])->findOrFail($id);
+            $grupo = $tarea->lista->grupo;
+
+            if (!$grupo) {
+                return response()->json([
+                    'message' => 500,
+                    'message_text' => 'No se pudo encontrar el grupo de la tarea'
+                ], 500);
+            }
+
+            // Validar que la tarea esté efectivamente vencida
+            if (!$tarea->isOverdue()) {
+                return response()->json([
+                    'message' => 400,
+                    'message_text' => 'La tarea no está vencida'
+                ], 400);
+            }
+
+            // Validar que quien solicita NO es el propietario
+            if ($grupo->user_id === auth()->id()) {
+                return response()->json([
+                    'message' => 400,
+                    'message_text' => 'El propietario puede reactivar la tarea directamente eliminando o actualizando la fecha de vencimiento'
+                ], 400);
+            }
+
+            $solicitante       = auth()->user();
+            $nombreSolicitante = trim($solicitante->name . ' ' . ($solicitante->surname ?? ''));
+            $fechaVencimiento  = $tarea->due_date
+                ? $tarea->due_date->format('d/m/Y')
+                : 'Sin fecha';
+            $fechaSolicitud    = now()->format('d/m/Y H:i');
+
+            // Cargar el usuario propietario por separado para asegurar que tenga email
+            $dueno = \App\Models\User::find($grupo->user_id);
+
+            if (!$dueno) {
+                return response()->json([
+                    'message' => 500,
+                    'message_text' => 'No se encontró al propietario del grupo'
+                ], 500);
+            }
+
+            $nombreDueno = trim($dueno->name . ' ' . ($dueno->surname ?? ''));
+
+            // ─────────────────────────────────────────────────────────
+            // CORREO 1: Al solicitante — "tu solicitud fue enviada"
+            // ─────────────────────────────────────────────────────────
+            try {
+                Mail::to($solicitante->email)->send(
+                    new ReactivacionSolicitanteMail(
+                        $nombreSolicitante,
+                        $tarea->name,
+                        $fechaVencimiento,
+                        $grupo->name,
+                        $grupo->id
+                    )
+                );
+                Log::info('✅ Correo 1 enviado al solicitante: ' . $solicitante->email);
+            } catch (\Exception $e) {
+                Log::error('❌ Error al enviar correo al solicitante: ' . $e->getMessage());
+            }
+
+            // ─────────────────────────────────────────────────────────
+            // CORREO 2: Al propietario del grupo — "solicitud recibida"
+            // ─────────────────────────────────────────────────────────
+            try {
+                Mail::to($dueno->email)->send(
+                    new ReactivacionPropietarioMail(
+                        $nombreDueno,
+                        $nombreSolicitante,
+                        $tarea->name,
+                        $fechaVencimiento,
+                        $fechaSolicitud,
+                        $grupo->name,
+                        $grupo->id
+                    )
+                );
+                Log::info('✅ Correo 2 enviado al propietario: ' . $dueno->email);
+            } catch (\Exception $e) {
+                Log::error('❌ Error al enviar correo al propietario: ' . $e->getMessage());
+            }
+
+            Log::info('TareasController@solicitarReactivacion - Solicitud procesada', [
+                'tarea_id'       => $id,
+                'solicitante_id' => auth()->id(),
+                'dueno_id'       => $dueno->id,
+            ]);
+
+            return response()->json([
+                'message'      => 200,
+                'message_text' => 'Solicitud enviada. El propietario del grupo fue notificado por correo.'
+            ]);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['message' => 404, 'message_text' => 'Tarea no encontrada'], 404);
+
+        } catch (\Exception $e) {
+            Log::error('TareasController@solicitarReactivacion - Error inesperado', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json(['message' => 500, 'message_text' => 'Error interno: ' . $e->getMessage()], 500);
         }
     }
 
@@ -1205,6 +1443,142 @@ class TareasController extends Controller
                 'tarea_id' => $tarea->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
+            ]);
+        }
+    }
+
+    /**
+     * 🆕 MÉTODO PRIVADO: Correo 3 — Reactivación confirmada a miembros asignados.
+     *
+     * Se dispara desde update() cuando:
+     *   - La tarea ESTABA vencida (isOverdue() era true antes del update)
+     *   - El propietario cambia due_date a una fecha hoy o futura
+     *
+     * Envía TareaReactivadaMail a CADA usuario asignado a la tarea.
+     */
+    /**
+     * 🆕 MÉTODO PRIVADO: Notificaciones de reactivación de tarea vencida.
+     *
+     * Se dispara desde update() cuando:
+     *   - La tarea ESTABA vencida (isOverdue() era true antes del update)
+     *   - El propietario cambia due_date a una fecha hoy/futura, O la elimina (null)
+     *
+     * Envía:
+     *   - TareaReactivadaMail                   → a CADA miembro asignado (correo 3)
+     *   - ReactivacionConfirmadaPropietarioMail  → al PROPIETARIO del grupo (correo 4)
+     *
+     * @param Tareas      $tarea        La tarea recién actualizada.
+     * @param string|null $nuevaDueDate Nueva fecha (YYYY-MM-DD) o null si se eliminó.
+     * @param string      $accion       'editada' | 'eliminada' — lo que hizo el dueño.
+     */
+    private function enviarNotificacionesReactivacion(
+        Tareas  $tarea,
+        ?string $nuevaDueDate,
+        string  $accion = 'editada'
+    ): void {
+        try {
+            $tarea->load(['lista.grupo', 'assignedUsers']);
+            $grupo = $tarea->lista->grupo;
+
+            if (!$grupo) {
+                Log::warning('❌ enviarNotificacionesReactivacion: no se encontró grupo de la tarea', [
+                    'tarea_id' => $tarea->id,
+                ]);
+                return;
+            }
+
+            $dueno       = \App\Models\User::find($grupo->user_id);
+            $nombreDueno = $dueno
+                ? trim($dueno->name . ' ' . ($dueno->surname ?? ''))
+                : 'El propietario';
+
+            // Formatear la nueva fecha para los correos
+            $nuevaFechaFormateada = $nuevaDueDate
+                ? \Carbon\Carbon::parse($nuevaDueDate)->format('d/m/Y')
+                : 'Sin fecha asignada';
+
+            $miembrosNotificados = 0;
+
+            // ─────────────────────────────────────────────────────────
+            // CORREO 3: A cada miembro asignado — "la tarea fue reactivada"
+            // Incluye la acción que realizó el dueño (editó o eliminó la fecha)
+            // ─────────────────────────────────────────────────────────
+            if ($tarea->assignedUsers->isNotEmpty()) {
+                foreach ($tarea->assignedUsers as $miembro) {
+                    try {
+                        $nombreMiembro = trim($miembro->name . ' ' . ($miembro->surname ?? ''));
+
+                        Mail::to($miembro->email)->send(
+                            new TareaReactivadaMail(
+                                $nombreMiembro,
+                                $nombreDueno,
+                                $tarea->name,
+                                $nuevaFechaFormateada,
+                                $grupo->name,
+                                $grupo->id,
+                                $accion           // 🆕 'editada' o 'eliminada'
+                            )
+                        );
+
+                        $miembrosNotificados++;
+
+                        Log::info('✅ Correo 3 enviado a miembro: ' . $miembro->email, [
+                            'tarea_id'   => $tarea->id,
+                            'miembro_id' => $miembro->id,
+                            'accion'     => $accion,
+                        ]);
+
+                    } catch (\Exception $e) {
+                        Log::error('❌ Error correo 3 a ' . $miembro->email . ': ' . $e->getMessage());
+                    }
+                }
+            } else {
+                Log::info('ℹ️ Sin miembros asignados, correo 3 omitido', ['tarea_id' => $tarea->id]);
+            }
+
+            // ─────────────────────────────────────────────────────────
+            // CORREO 4: Al propietario — "reactivaste la tarea exitosamente"
+            // Incluye la acción que realizó (editó o eliminó la fecha)
+            // ─────────────────────────────────────────────────────────
+            if ($dueno && $dueno->email) {
+                try {
+                    Mail::to($dueno->email)->send(
+                        new ReactivacionConfirmadaPropietarioMail(
+                            $nombreDueno,
+                            $tarea->name,
+                            $nuevaFechaFormateada,
+                            $grupo->name,
+                            $grupo->id,
+                            $miembrosNotificados,
+                            $accion               // 🆕 'editada' o 'eliminada'
+                        )
+                    );
+
+                    Log::info('✅ Correo 4 enviado al propietario: ' . $dueno->email, [
+                        'tarea_id'             => $tarea->id,
+                        'miembros_notificados' => $miembrosNotificados,
+                        'accion'               => $accion,
+                    ]);
+
+                } catch (\Exception $e) {
+                    Log::error('❌ Error correo 4 al propietario: ' . $e->getMessage());
+                }
+            }
+
+            Log::info('📧 Notificaciones de reactivación completadas', [
+                'tarea_id'               => $tarea->id,
+                'tarea_name'             => $tarea->name,
+                'nueva_fecha'            => $nuevaFechaFormateada,
+                'accion'                 => $accion,
+                'miembros_notificados'   => $miembrosNotificados,
+                'propietario_notificado' => $dueno ? 'sí' : 'no',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error general en enviarNotificacionesReactivacion', [
+                'tarea_id' => $tarea->id,
+                'error'    => $e->getMessage(),
+                'trace'    => $e->getTraceAsString(),
             ]);
         }
     }

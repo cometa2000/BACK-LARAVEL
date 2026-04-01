@@ -91,7 +91,7 @@
 
             <!-- BUTTON CTA -->
             <div style="text-align:center; margin-top:10px; margin-bottom:50px;">
-                <a href="https://crmbbm.preubasbbm.com/tasks/tareas/tablero/{{ $grupo->id }}" 
+                <a href="https://crm-angular.preubasbbm.com/tasks/tareas/tablero/{{ $grupo->id }}" 
                    style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); padding:14px 28px; border-radius:8px; color:white; font-weight:bold; text-decoration:none; box-shadow:0 4px 12px rgba(59,130,246,0.6); display:inline-block;">
                     <img src="https://img.icons8.com/ios/48/ffffff/external-link.png" style="width:18px; vertical-align:middle; margin-right:8px;">
                     Ver tarea completa

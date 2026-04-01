@@ -33,7 +33,7 @@ class TareaAsignadaMail extends Mailable
         $this->lista = $lista;
         
         // URL directa al tablero con la tarea
-        $this->urlTarea = 'https://crmbbm.preubasbbm.com/tasks/tareas/tablero/' . $grupo->id;
+        $this->urlTarea = 'https://crm-angular.preubasbbm.com/tasks/tareas/tablero/' . $grupo->id;
     }
 
     /**

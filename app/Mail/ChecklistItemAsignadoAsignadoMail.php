@@ -62,7 +62,7 @@ class ChecklistItemAsignadoAsignadoMail extends Mailable
                 'nombreTarea'       => $this->nombreTarea,
                 'nombreGrupo'       => $this->nombreGrupo,
                 'fechaVencimiento'  => $this->fechaVencimiento,
-                'urlTablero'        => 'https://crmbbm.preubasbbm.com/tasks/tareas/tablero/' . $this->grupoId,
+                'urlTablero'        => 'https://crm-angular.preubasbbm.com/tasks/tareas/tablero/' . $this->grupoId,
             ]
         );
     }

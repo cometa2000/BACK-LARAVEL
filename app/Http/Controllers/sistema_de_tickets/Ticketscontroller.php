@@ -27,6 +27,8 @@ class TicketsController extends Controller
     // CONSTANTES
     // ================================================================
     const SEDE_PRINCIPAL_ID = 5; // ID de la sucursal "huezo" (sede principal)
+    const ROL_FRANQUICIATARIO  = 30;  // role_id del franquiciatario
+    const ROL_SUPER_ADMIN      = 1; 
 
     // ================================================================
     // INDEX - Listar tickets con filtros de vista
@@ -193,51 +195,80 @@ class TicketsController extends Controller
     public function store(Request $request)
     {
         try {
-            $user = auth('api')->user();
+            $user   = auth('api')->user();
             $esSede = $user->sucursale_id == self::SEDE_PRINCIPAL_ID;
-
-            // ── Validaciones ──
+            $esFranquiciatario = $user->role_id == self::ROL_FRANQUICIATARIO;
+    
             $request->validate([
                 'asunto'      => 'required|string|max:255',
                 'descripcion' => 'required|string',
-                'prioridad'   => 'in:baja,media,alta',
+                'prioridad'   => 'nullable|in:baja,media,alta',
                 'fecha_limite'=> 'nullable|date',
                 'categoria'   => 'nullable|string|max:100',
+                'tipo_destino'=> 'required|in:area,sucursal,usuario_sucursal',
             ]);
-
-            // ── Determinar tipo_origen y destino ──
-            $tipoOrigen = $esSede ? 'sede' : 'sucursal';
-            $tipoDestino = null;
-            $rolDestinoId = null;
+    
+            $tipoOrigen        = $esSede ? 'sede' : 'sucursal';
+            $tipoDestino       = null;
             $sucursalDestinoId = null;
-            $asignadoId = null;
-
-            if ($esSede) {
-                // Sede → Sucursal: asignar al franquiciatario
+            $asignadoId        = null;
+    
+            $tipo = $request->input('tipo_destino');
+    
+            // ── Destino = ÁREA de sede (sede o franquiciatario) ─────────
+            if ($tipo === 'area') {
+                $request->validate(['ticket_area_id' => 'required|exists:ticket_areas,id']);
+                $area = \App\Models\sistema_de_tickets\TicketArea::findOrFail($request->ticket_area_id);
+                $tipoDestino = 'area_sede';
+                $asignadoId  = $area->responsable_id;
+    
+            // ── Destino = SUCURSAL (solo sede) ──────────────────────────
+            } elseif ($tipo === 'sucursal') {
+                if (!$esSede) {
+                    return response()->json(['message' => 403, 'error' => 'Sin permiso para enviar a sucursal'], 403);
+                }
                 $request->validate(['sucursal_destino_id' => 'required|exists:sucursales,id']);
-                $tipoDestino = 'sucursal';
+                $tipoDestino       = 'sucursal';
                 $sucursalDestinoId = $request->sucursal_destino_id;
-
-                // Buscar franquiciatario de esa sucursal (rol_id = 3 o según configuración)
-                $franquiciatario = User::where('sucursale_id', $sucursalDestinoId)
-                    ->whereHas('roles', fn($q) => $q->where('name', 'Franquiciatario'))
+    
+                // Buscar franquiciatario de esa sucursal por role_id = 30
+                $franquiciatario = \App\Models\User
+                    ::where('sucursale_id', $sucursalDestinoId)
+                    ->where('role_id', self::ROL_FRANQUICIATARIO)
+                    ->whereNull('deleted_at')
                     ->first();
                 $asignadoId = $franquiciatario?->id;
-
-            } else {
-                // Sucursal → Área de sede: asignar a un usuario de ese rol en sede
-                $request->validate(['rol_destino_id' => 'required|exists:roles,id']);
-                $tipoDestino = 'area_sede';
-                $rolDestinoId = $request->rol_destino_id;
-
-                // Buscar usuario disponible en sede con ese rol
-                $responsable = User::where('sucursale_id', self::SEDE_PRINCIPAL_ID)
-                    ->whereHas('roles', fn($q) => $q->where('id', $rolDestinoId))
-                    ->first();
-                $asignadoId = $responsable?->id;
+    
+            // ── Destino = USUARIO SUCURSAL (franquiciatario ↔ equipo) ───
+            } elseif ($tipo === 'usuario_sucursal') {
+                $request->validate(['asignado_id' => 'required|exists:users,id']);
+                $destinatario = \App\Models\User::findOrFail($request->asignado_id);
+    
+                // Equipo solo puede enviar a su franquiciatario
+                if (!$esSede && !$esFranquiciatario) {
+                    if (
+                        $destinatario->sucursale_id != $user->sucursale_id ||
+                        $destinatario->role_id != self::ROL_FRANQUICIATARIO
+                    ) {
+                        return response()->json([
+                            'message' => 422,
+                            'error'   => 'Solo puedes enviar tickets a tu franquiciatario.',
+                        ], 422);
+                    }
+                }
+                // Franquiciatario puede enviar a su equipo (misma sucursal)
+                if ($esFranquiciatario && $destinatario->sucursale_id != $user->sucursale_id) {
+                    return response()->json([
+                        'message' => 422,
+                        'error'   => 'El destinatario no pertenece a tu sucursal.',
+                    ], 422);
+                }
+    
+                $tipoDestino = 'usuario_sucursal';
+                $asignadoId  = $destinatario->id;
             }
-
-            // ── Crear ticket ──
+    
+            // ── Crear ticket ────────────────────────────────────────────
             $ticket = Ticket::create([
                 'folio'               => Ticket::generarFolio(),
                 'creador_id'          => $user->id,
@@ -245,17 +276,18 @@ class TicketsController extends Controller
                 'sucursale_id'        => $user->sucursale_id,
                 'tipo_origen'         => $tipoOrigen,
                 'tipo_destino'        => $tipoDestino,
-                'rol_destino_id'      => $rolDestinoId,
+                'rol_destino_id'      => null,   // ya no usamos rol, usamos ticket_area
                 'sucursal_destino_id' => $sucursalDestinoId,
                 'asunto'              => $request->asunto,
                 'descripcion'         => $request->descripcion,
                 'categoria'           => $request->categoria,
-                'prioridad'           => $request->prioridad ?? 'media',
+                // Prioridad: sede siempre puede fijarla; sucursales la heredan como 'media'
+                'prioridad'           => ($esSede && $request->prioridad) ? $request->prioridad : 'media',
                 'estado'              => 'pendiente',
-                'fecha_limite'        => $request->fecha_limite,
+                'fecha_limite'        => $esSede ? $request->fecha_limite : null,
             ]);
-
-            // ── Registrar historial de estado inicial ──
+    
+            // ── Historial estado inicial ────────────────────────────────
             TicketStatusHistory::create([
                 'ticket_id'       => $ticket->id,
                 'user_id'         => $user->id,
@@ -263,8 +295,8 @@ class TicketsController extends Controller
                 'estado_nuevo'    => 'pendiente',
                 'comentario'      => 'Ticket creado',
             ]);
-
-            // ── TIPO 1: Archivos nuevos ──
+    
+            // ── Adjuntos tipo 1: archivos nuevos ────────────────────────
             if ($request->hasFile('adjuntos')) {
                 foreach ($request->file('adjuntos') as $archivo) {
                     $path = $archivo->store("tickets/{$ticket->id}", 'public');
@@ -278,11 +310,11 @@ class TicketsController extends Controller
                     ]);
                 }
             }
-
-            // ── TIPO 2: Documentos existentes del sistema de archivos ──
+    
+            // ── Adjuntos tipo 2: documentos existentes ──────────────────
             if ($request->has('documento_ids')) {
                 foreach ($request->input('documento_ids', []) as $documentoId) {
-                    $doc = Documentos::find($documentoId);
+                    $doc = \App\Models\documents\Documentos::find($documentoId);
                     if (!$doc || $doc->type !== 'file') continue;
                     TicketAttachment::create([
                         'ticket_id'    => $ticket->id,
@@ -295,8 +327,8 @@ class TicketsController extends Controller
                     ]);
                 }
             }
-
-            // ── TIPO 3: URLs externas ──
+    
+            // ── Adjuntos tipo 3: URLs externas ──────────────────────────
             if ($request->has('adjuntos_url')) {
                 $urls = json_decode($request->input('adjuntos_url'), true) ?? [];
                 foreach ($urls as $enlace) {
@@ -312,20 +344,39 @@ class TicketsController extends Controller
                     ]);
                 }
             }
-
-            $ticket->load(['creador:id,name,surname,avatar', 'asignado:id,name,surname,avatar', 'sucursale:id,name', 'sucursalDestino:id,name', 'rolDestino:id,name', 'attachments']);
-
-            Log::info('Ticket creado', ['ticket_id' => $ticket->id, 'folio' => $ticket->folio]);
-
+    
+            // ── Tareas adjuntas ─────────────────────────────────────────
+            if ($request->has('tarea_ids')) {
+                foreach ($request->input('tarea_ids', []) as $tareaId) {
+                    \App\Models\sistema_de_tickets\TicketTarea::firstOrCreate([
+                        'ticket_id'         => $ticket->id,
+                        'tarea_id'          => $tareaId,
+                        'ticket_message_id' => null,
+                    ], ['user_id' => $user->id]);
+                }
+            }
+    
+            $ticket->load([
+                'creador:id,name,surname,avatar',
+                'asignado:id,name,surname,avatar',
+                'sucursale:id,name',
+                'sucursalDestino:id,name',
+                'rolDestino:id,name',
+                'attachments',
+            ]);
+    
             return response()->json([
                 'message' => 200,
                 'ticket'  => $this->formatTicketResumen($ticket, auth('api')->user()),
             ]);
-
+    
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json(['message' => 422, 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('TicketsController@store', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            \Log::error('TicketsController@store', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json(['message' => 500, 'error' => 'Error al crear ticket'], 500);
         }
     }
@@ -340,7 +391,7 @@ class TicketsController extends Controller
             $ticket = Ticket::findOrFail($id);
 
             // No editar tickets cerrados (salvo admin)
-            if ($ticket->estado === 'cerrado' && !$user->hasRole('Administrador')) {
+            if ($ticket->estado === 'cerrado' && (int)$user->role_id !== 1) {
                 return response()->json(['message' => 403, 'message_text' => 'No se puede editar un ticket cerrado'], 403);
             }
 
@@ -390,7 +441,7 @@ class TicketsController extends Controller
             $ticket = Ticket::findOrFail($id);
 
             // Solo el creador o admin puede eliminar
-            if ($ticket->creador_id !== $user->id && !$user->hasRole('Administrador')) {
+            if ($ticket->creador_id !== $user->id && (int)$user->role_id !== 1) {
                 return response()->json(['message' => 403, 'message_text' => 'Sin permiso para eliminar este ticket'], 403);
             }
 
@@ -473,31 +524,44 @@ class TicketsController extends Controller
         try {
             $user   = auth('api')->user();
             $esSede = $user->sucursale_id == self::SEDE_PRINCIPAL_ID;
-
-            if (!$esSede && !$user->hasRole('Administrador')) {
+    
+            // Solo usuarios de la sede o Super-Admin pueden reasignar
+            if (!$esSede && (int)$user->role_id !== 1) {
                 return response()->json(['message' => 403, 'message_text' => 'Sin permiso para reasignar'], 403);
             }
-
+    
             $request->validate([
-                'asignado_id' => 'required|exists:users,id',
-                'motivo'      => 'nullable|string',
+                'asignado_id'    => 'required|exists:users,id',
+                'ticket_area_id' => 'nullable|exists:ticket_areas,id',
+                'motivo'         => 'nullable|string|max:500',
             ]);
-
+    
             $ticket = Ticket::findOrFail($id);
-
+    
+            // Registrar historial de asignación
             TicketAssignment::create([
                 'ticket_id'       => $ticket->id,
                 'asignado_por_id' => $user->id,
                 'asignado_a_id'   => $request->asignado_id,
                 'motivo'          => $request->motivo,
             ]);
-
-            $ticket->update(['asignado_id' => $request->asignado_id]);
-
-            return response()->json(['message' => 200, 'message_text' => 'Ticket reasignado correctamente']);
-
+    
+            $updateData = ['asignado_id' => $request->asignado_id];
+    
+            // Si se especificó un área, actualizar tipo_destino también
+            if ($request->filled('ticket_area_id')) {
+                $updateData['tipo_destino'] = 'area_sede';
+            }
+    
+            $ticket->update($updateData);
+    
+            return response()->json([
+                'message'      => 200,
+                'message_text' => 'Ticket reasignado correctamente',
+            ]);
+    
         } catch (\Exception $e) {
-            Log::error('TicketsController@reasignar', ['error' => $e->getMessage()]);
+            \Log::error('TicketsController@reasignar', ['error' => $e->getMessage()]);
             return response()->json(['message' => 500, 'error' => 'Error al reasignar ticket'], 500);
         }
     }
@@ -658,37 +722,191 @@ class TicketsController extends Controller
     {
         try {
             $user   = auth('api')->user();
-            $esSede = $user->sucursale_id == self::SEDE_PRINCIPAL_ID;
-
-            if ($esSede) {
-                // Sede ve todas las sucursales (menos la sede misma)
-                $destinos = Sucursale::where('id', '!=', self::SEDE_PRINCIPAL_ID)
-                                     ->get(['id', 'name']);
-                return response()->json([
-                    'tipo_usuario' => 'sede',
-                    'es_sede'      => true,
-                    'destinos'     => $destinos,
+            $esSede = (int)$user->sucursale_id === self::SEDE_PRINCIPAL_ID;
+    
+            // ── HELPER: obtener áreas activas (común para todos los flujos) ─
+            $getAreas = fn() => \App\Models\sistema_de_tickets\TicketArea
+                ::with('responsable:id,name,surname,avatar')
+                ->where('activo', true)
+                ->orderBy('nombre')
+                ->get()
+                ->map(fn($a) => [
+                    'id'                 => $a->id,
+                    'name'               => $a->nombre,
+                    'tipo'               => 'area',
+                    'responsable_id'     => $a->responsable_id,
+                    'responsable_nombre' => $a->responsable
+                        ? trim($a->responsable->name . ' ' . ($a->responsable->surname ?? ''))
+                        : null,
+                    'responsable_avatar' => $a->responsable?->avatar,
                 ]);
-            } else {
-                // Sucursal ve únicamente los roles que tienen al menos un usuario
-                // asignado a la sede principal — garantiza que el ticket vaya
-                // a alguien real y no a un rol vacío
-                $roles = Role::whereNotIn('name', ['Franquiciatario', 'Super-Admin'])
-                    ->whereHas('users', function ($q) {
-                        $q->where('sucursale_id', self::SEDE_PRINCIPAL_ID);
-                    })
-                    ->get(['id', 'name']);
+    
+            // ── HELPER: detectar si el usuario es franquiciatario ───────────
+            // Intenta AMBOS mecanismos para ser compatible con role_id directo
+            // y con Spatie (model_has_roles) si existe.
+            $esFranquiciatario = (int)$user->role_id === self::ROL_FRANQUICIATARIO;
+    
+            if (!$esFranquiciatario) {
+                // Fallback: verificar por nombre de rol de Spatie si existe la tabla
+                try {
+                    $esFranquiciatario = \Illuminate\Support\Facades\DB
+                        ::table('model_has_roles')
+                        ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
+                        ->where('model_has_roles.model_id', $user->id)
+                        ->where('model_has_roles.model_type', get_class($user))
+                        ->whereIn(\Illuminate\Support\Facades\DB::raw('LOWER(roles.name)'), [
+                            'franquiciatario',
+                            'franquiciario',
+                            'franchisee',
+                        ])
+                        ->exists();
+                } catch (\Exception $e) {
+                    // La tabla model_has_roles no existe — quedamos con el resultado de role_id
+                }
+            }
+    
+            // ================================================================
+            // SEDE PRINCIPAL (sucursale_id = 5)
+            // ================================================================
+            if ($esSede) {
+                $areas = $getAreas();
+    
+                $sucursales = \App\Models\Configuration\Sucursale
+                    ::where('id', '!=', self::SEDE_PRINCIPAL_ID)
+                    ->whereNull('deleted_at')
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                    ->map(fn($s) => [
+                        'id'   => $s->id,
+                        'name' => $s->name,
+                        'tipo' => 'sucursal',
+                    ]);
+    
                 return response()->json([
-                    'tipo_usuario' => 'sucursal',
-                    'es_sede'      => false,
-                    'destinos'     => $roles,
+                    'tipo_usuario'        => 'sede',
+                    'es_sede'             => true,
+                    'es_super_admin'      => (int)$user->role_id === self::ROL_SUPER_ADMIN,
+                    'destinos_areas'      => $areas->values(),
+                    'destinos_sucursales' => $sucursales->values(),
                 ]);
             }
-
+    
+            // ================================================================
+            // FRANQUICIATARIO (sucursale_id != 5, rol = franquiciatario)
+            // ================================================================
+            if ($esFranquiciatario) {
+                $areas = $getAreas();
+    
+                // Equipo de trabajo: misma sucursal, excluyendo al propio franquiciatario
+                // NO filtra por role_id para ser inclusivo con cualquier estructura de roles
+                $equipo = \App\Models\User
+                    ::where('sucursale_id', $user->sucursale_id)
+                    ->where('id', '!=', $user->id)
+                    ->whereNull('deleted_at')
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'surname', 'avatar', 'role_id'])
+                    ->map(fn($u) => [
+                        'id'     => $u->id,
+                        'name'   => trim($u->name . ' ' . ($u->surname ?? '')),
+                        'tipo'   => 'usuario_sucursal',
+                        'avatar' => $u->avatar,
+                        // Intenta obtener el nombre del rol sin depender de Spatie
+                        'rol'    => $this->getNombreRol($u->role_id),
+                    ]);
+    
+                return response()->json([
+                    'tipo_usuario'    => 'franquiciatario',
+                    'es_sede'         => false,
+                    'es_super_admin'  => false,
+                    'destinos_areas'  => $areas->values(),
+                    'destinos_equipo' => $equipo->values(),
+                ]);
+            }
+    
+            // ================================================================
+            // EQUIPO DE SUCURSAL (sucursale_id != 5, rol != franquiciatario)
+            // Solo puede enviar a su franquiciatario.
+            // ================================================================
+    
+            // Buscar el franquiciatario de la sucursal por role_id directo
+            $franquiciatario = \App\Models\User
+                ::where('sucursale_id', $user->sucursale_id)
+                ->where('role_id', self::ROL_FRANQUICIATARIO)
+                ->whereNull('deleted_at')
+                ->first(['id', 'name', 'surname', 'avatar', 'role_id']);
+    
+            // Fallback: si no encontró por role_id directo, buscar por nombre de rol en Spatie
+            if (!$franquiciatario) {
+                try {
+                    $franquiciatarioId = \Illuminate\Support\Facades\DB
+                        ::table('model_has_roles')
+                        ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
+                        ->join('users', 'users.id', '=', 'model_has_roles.model_id')
+                        ->where('users.sucursale_id', $user->sucursale_id)
+                        ->whereNull('users.deleted_at')
+                        ->whereIn(\Illuminate\Support\Facades\DB::raw('LOWER(roles.name)'), [
+                            'franquiciatario',
+                            'franquiciario',
+                            'franchisee',
+                        ])
+                        ->value('users.id');
+    
+                    if ($franquiciatarioId) {
+                        $franquiciatario = \App\Models\User::find($franquiciatarioId);
+                    }
+                } catch (\Exception $e) {
+                    // model_has_roles no existe
+                }
+            }
+    
+            $destinos = $franquiciatario ? [[
+                'id'     => $franquiciatario->id,
+                'name'   => trim($franquiciatario->name . ' ' . ($franquiciatario->surname ?? '')),
+                'tipo'   => 'usuario_sucursal',
+                'avatar' => $franquiciatario->avatar,
+                'rol'    => 'Franquiciatario',
+            ]] : [];
+    
+            return response()->json([
+                'tipo_usuario'  => 'equipo_sucursal',
+                'es_sede'       => false,
+                'es_super_admin'=> false,
+                'destinos'      => $destinos,
+            ]);
+    
         } catch (\Exception $e) {
-            Log::error('TicketsController@config', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-            return response()->json(['message' => 500, 'error' => 'Error al obtener configuración: ' . $e->getMessage()], 500);
+            \Log::error('TicketsController@config', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'message' => 500,
+                'error'   => 'Error al obtener configuración: ' . $e->getMessage(),
+            ], 500);
         }
+    }
+
+
+    // ================================================================
+    // HELPER PRIVADO: obtener nombre de rol por role_id directo
+    // Sin depender de Spatie / model_has_roles
+    // ================================================================
+    private function getNombreRol(?int $roleId): string
+    {
+        if (!$roleId) return '—';
+        static $cache = [];
+        if (isset($cache[$roleId])) return $cache[$roleId];
+    
+        try {
+            $rol = \Illuminate\Support\Facades\DB
+                ::table('roles')
+                ->where('id', $roleId)
+                ->value('name');
+            $cache[$roleId] = $rol ?? '—';
+        } catch (\Exception $e) {
+            $cache[$roleId] = '—';
+        }
+        return $cache[$roleId];
     }
 
     // ================================================================

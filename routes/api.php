@@ -13,6 +13,7 @@ use App\Http\Controllers\documents\DocumentosController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RolePermissionController;
+use App\Http\Controllers\sistema_de_tickets\TicketAreasController;
 use App\Http\Controllers\sistema_de_tickets\TicketsController;
 use App\Http\Controllers\tasks\ChecklistsController;
 use App\Http\Controllers\tasks\ComentariosController;
@@ -63,10 +64,6 @@ Route::group([
         Route::get('/{id}/stats', [WorkspaceController::class, 'stats']); // Estadísticas
         Route::get('/{id}/grupos', [WorkspaceController::class, 'getWorkspaceGroups']); // Grupos del workspace
     });
-
-    
-
-
 
     // Calendario de eventos
     Route::get('calendar-events', [CalendarEventController::class, 'index']);
@@ -149,6 +146,8 @@ Route::group([
     // 🆕 Copiar checklist
     Route::get('/grupos/{grupoId}/checklists', [ChecklistsController::class, 'getGroupChecklists']);
     Route::post('/tareas/{tareaId}/checklists/copy', [ChecklistsController::class, 'copyChecklist']);
+    // Reordenar checklists
+    Route::post('/tareas/{tareaId}/checklists/reorder', [ChecklistsController::class, 'reorder']);
 
     // Checklist Items
     Route::post('/tareas/{tareaId}/checklists/{checklistId}/items', [ChecklistsController::class, 'addItem']);
@@ -169,15 +168,15 @@ Route::group([
     Route::post('/tareas/{tarea}/assign-members', [TareasController::class, 'assignMembers']);
     Route::get('/tareas/{tarea}/members', [TareasController::class, 'getMembers']);
     Route::delete('/tareas/{tarea}/unassign-member/{user}', [TareasController::class, 'unassignMember']);
-    
 
+    // 🆕 Solicitar reactivación de tarea vencida (usuarios compartidos → notifica al dueño)
+    Route::post('/tareas/{id}/solicitar-reactivacion', [TareasController::class, 'solicitarReactivacion']);
 
     // ========================================
     // 📊 GANTT CHART
     // ========================================
     Route::get('/gantt/data', [GanttController::class, 'getGanttData']);
     Route::get('/gantt/filter-options', [GanttController::class, 'getFilterOptions']);
-
     
     // ========================================
     // 📄 DOCUMENTOS
@@ -192,7 +191,7 @@ Route::group([
         
     // Árbol de carpetas
     Route::get('/documentos/tree', [DocumentosController::class, 'getTree']);
-    Route::get('/documentos/folder-tree', [DocumentosController::class, 'getFolderTree']); // NUEVO
+    Route::get('/documentos/folder-tree', [DocumentosController::class, 'getFolderTree']); 
     Route::get('/documentos/folder/{id}', [DocumentosController::class, 'getFolderContents']);
         
     // Operaciones sobre documentos
@@ -203,8 +202,8 @@ Route::group([
     // Visualización y descarga
     Route::get('/documentos/{id}/download', [DocumentosController::class, 'download']);
     Route::get('/documentos/{id}/info', [DocumentosController::class, 'getDocumentInfo']);
-    Route::post('/documentos/{id}/mark-viewed', [DocumentosController::class, 'markAsViewed']); // NUEVO
-
+    Route::get('/documentos/{id}/serve',    [DocumentosController::class, 'serve']);
+    Route::post('/documentos/{id}/mark-viewed', [DocumentosController::class, 'markAsViewed']); 
 
     // ========================================
     // 📊 ACTIVIDADES
@@ -238,33 +237,42 @@ Route::group([
     // ========================================
     Route::prefix('sistema-de-tickets')->group(function () {
         // Tickets CRUD
-        Route::get('/tickets',                        [TicketsController::class, 'index']);
-        Route::post('/tickets',                       [TicketsController::class, 'store']);
-        Route::get('/tickets/{id}',                   [TicketsController::class, 'show']);
-        Route::put('/tickets/{id}',                   [TicketsController::class, 'update']);
-        Route::delete('/tickets/{id}',                [TicketsController::class, 'destroy']);
+        Route::get('/tickets', [TicketsController::class, 'index']);
+        Route::post('/tickets', [TicketsController::class, 'store']);
+        Route::get('/tickets/{id}', [TicketsController::class, 'show']);
+        Route::put('/tickets/{id}', [TicketsController::class, 'update']);
+        Route::delete('/tickets/{id}', [TicketsController::class, 'destroy']);
 
         // Acciones del ticket
-        Route::patch('/tickets/{id}/estado',          [TicketsController::class, 'cambiarEstado']);
-        Route::patch('/tickets/{id}/reasignar',       [TicketsController::class, 'reasignar']);
-        Route::patch('/tickets/{id}/favorito',        [TicketsController::class, 'toggleFavorito']);
-        Route::patch('/tickets/{id}/archivar',        [TicketsController::class, 'toggleArchivar']);
+        Route::patch('/tickets/{id}/estado', [TicketsController::class, 'cambiarEstado']);
+        Route::patch('/tickets/{id}/reasignar', [TicketsController::class, 'reasignar']);
+        Route::patch('/tickets/{id}/favorito', [TicketsController::class, 'toggleFavorito']);
+        Route::patch('/tickets/{id}/archivar', [TicketsController::class, 'toggleArchivar']);
 
         // Mensajes / Conversación
-        Route::post('/tickets/{id}/messages',         [TicketsController::class, 'storeMessage']);
+        Route::post('/tickets/{id}/messages', [TicketsController::class, 'storeMessage']);
 
         // Configuración (datos para el formulario de creación)
-        Route::get('/config',                         [TicketsController::class, 'config']);
+        Route::get('/config', [TicketsController::class, 'config']);
 
         // Métricas (contadores del sidebar)
-        Route::get('/metricas',                       [TicketsController::class, 'metricas']);
+        Route::get('/metricas', [TicketsController::class, 'metricas']);
 
         // Tareas disponibles para adjuntar en un ticket
         Route::get('/tareas-disponibles', [TicketsController::class, 'tareasDisponibles']);
 
         // Adjuntar / quitar tarea en ticket o hilo
-        Route::post('/tickets/{id}/adjuntar-tarea',               [TicketsController::class, 'adjuntarTarea']);
+        Route::post('/tickets/{id}/adjuntar-tarea', [TicketsController::class, 'adjuntarTarea']);
         Route::delete('/tickets/{ticketId}/adjuntar-tarea/{ttId}', [TicketsController::class, 'quitarTarea']);
+
+        // Áreas — usuarios de sede (DEBE ir antes de /areas/{id})
+        Route::get('/areas-usuarios-sede', [TicketAreasController::class, 'usuariosSede']);
+
+        // Áreas de la sede principal (CRUD exclusivo Super-Admin)
+        Route::get('/areas', [TicketAreasController::class, 'index']);
+        Route::post('/areas', [TicketAreasController::class, 'store']);
+        Route::put('/areas/{id}', [TicketAreasController::class, 'update']);
+        Route::delete('/areas/{id}', [TicketAreasController::class, 'destroy']);
     });
 });
 

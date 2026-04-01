@@ -41,6 +41,11 @@ class Kernel extends ConsoleKernel
         //     ->between('8:00', '18:00')
         //     ->withoutOverlapping()
         //     ->runInBackground();
+
+        // ========================================
+        //  VERIFICACIÓN DE ELEMENTOS VENCIDOS
+        // ========================================
+        $schedule->command('checklist:notificar-vencimientos')->dailyAt('08:00');
     }
 
     /**

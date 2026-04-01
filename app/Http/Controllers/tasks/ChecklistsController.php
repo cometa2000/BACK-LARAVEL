@@ -740,4 +740,32 @@ class ChecklistsController extends Controller
             ]
         ], 201);
     }
+
+
+    /**
+     * 🆕 Reordenar checklists de una tarea
+     */
+    public function reorder(Request $request, $tareaId)
+    {
+        $request->validate([
+            'checklists' => 'required|array',
+            'checklists.*.id' => 'required|integer|exists:checklists,id',
+            'checklists.*.orden' => 'required|integer|min:0',
+        ]);
+
+        Log::info("🔀 Reordenando checklists de la tarea ID: {$tareaId}");
+
+        foreach ($request->checklists as $item) {
+            Checklist::where('id', $item['id'])
+                ->where('tarea_id', $tareaId)
+                ->update(['orden' => $item['orden']]);
+        }
+
+        Log::info("✅ Checklists reordenados");
+
+        return response()->json([
+            'message' => 200,
+            'message_text' => 'Orden actualizado exitosamente'
+        ]);
+    }
 }

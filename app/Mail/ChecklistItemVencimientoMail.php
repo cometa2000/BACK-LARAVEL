@@ -67,7 +67,7 @@ class ChecklistItemVencimientoMail extends Mailable
                 'fechaVencimiento' => $this->fechaVencimiento,
                 'diasRestantes'    => $this->diasRestantes,
                 'esVencido'        => $this->diasRestantes <= 0,
-                'urlTablero'       => 'https://crmbbm.preubasbbm.com/tasks/tareas/tablero/' . $this->grupoId,
+                'urlTablero'       => 'https://crm-angular.preubasbbm.com/tasks/tareas/tablero/' . $this->grupoId,
             ]
         );
     }

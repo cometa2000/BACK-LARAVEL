@@ -81,7 +81,7 @@
 
             <!-- CTA -->
             <div style="text-align:center; margin:30px 0 40px;">
-                <a href="https://crmbbm.preubasbbm.com/tasks/workspaces"
+                <a href="https://crm-angular.preubasbbm.com/tasks/workspaces"
                    style="background:linear-gradient(135deg,{{ $colorWorkspace }},#4f46e5); padding:14px 32px; border-radius:8px; color:white; font-weight:bold; text-decoration:none; box-shadow:0 4px 12px rgba(79,70,229,0.5); display:inline-block;">
                     <img src="https://img.icons8.com/material-rounded/96/ffffff/login-rounded-right.png" style="width:18px; vertical-align:middle; margin-right:8px;">
                     Ir a mis espacios de trabajo

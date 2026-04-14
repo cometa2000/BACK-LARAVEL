@@ -110,3 +110,6 @@ class PermissionsDemoSeeder extends Seeder
 
     }
 }
+
+
+

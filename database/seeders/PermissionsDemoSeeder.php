@@ -32,6 +32,10 @@ class PermissionsDemoSeeder extends Seeder
         Permission::create(['guard_name' => 'api','name' => 'edit_task']);
         Permission::create(['guard_name' => 'api','name' => 'delete_task']);
 
+        Permission::create(['guard_name' => 'api','name' => 'register_ticket']);
+        Permission::create(['guard_name' => 'api','name' => 'edit_ticket']);
+        Permission::create(['guard_name' => 'api','name' => 'delete_ticket']);
+
         Permission::create(['guard_name' => 'api','name' => 'register_documents']);
         Permission::create(['guard_name' => 'api','name' => 'edit_documents']);
         Permission::create(['guard_name' => 'api','name' => 'delete_documents']);

@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\WorkspaceCreadoMail;
+use App\Services\NotificationService;
 
 class WorkspaceController extends Controller
 {
@@ -239,6 +240,13 @@ class WorkspaceController extends Controller
             } catch (\Exception $mailEx) {
                 // El fallo del correo no debe interrumpir la respuesta
                 Log::error('❌ Error al enviar WorkspaceCreadoMail', ['error' => $mailEx->getMessage()]);
+            }
+
+            // 🆕 Notificación en sistema: workspace creado
+            try {
+                NotificationService::workspaceCreado($workspace, $user);
+            } catch (\Exception $e) {
+                Log::warning('⚠️ No se pudo crear notificación workspaceCreado: ' . $e->getMessage());
             }
 
             return response()->json([

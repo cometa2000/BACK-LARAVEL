@@ -33,7 +33,7 @@ class TareaVencidaMail extends Mailable
     {
         return new Envelope(
             from: new Address(config('mail.from.address'), config('mail.from.name')),
-            subject: '❌ Tarea Vencida: ' . $this->tarea->name,
+            subject: 'Tarea Vencida: ' . $this->tarea->name,
         );
     }
 

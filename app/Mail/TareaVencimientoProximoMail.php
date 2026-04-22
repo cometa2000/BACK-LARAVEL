@@ -37,8 +37,8 @@ class TareaVencimientoProximoMail extends Mailable
     public function envelope(): Envelope
     {
         $subject = $this->diasRestantes == 1 
-            ? '⏰ Tarea vence mañana: ' . $this->tarea->name 
-            : '⏰ Tarea vence en ' . $this->diasRestantes . ' días: ' . $this->tarea->name;
+            ? 'Tarea vence mañana: ' . $this->tarea->name 
+            : 'Tarea vence en ' . $this->diasRestantes . ' días: ' . $this->tarea->name;
 
         return new Envelope(
             from: new Address(config('mail.from.address'), config('mail.from.name')),

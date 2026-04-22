@@ -1253,6 +1253,14 @@ class TareasController extends Controller
                 'dueno_id'       => $dueno->id,
             ]);
 
+            // 🆕 Notificaciones en sistema: reactivación solicitada
+            try {
+                NotificationService::reactivacionSolicitante($solicitante, $dueno, $tarea, $grupo);
+                NotificationService::reactivacionPropietario($dueno, $solicitante, $tarea, $grupo);
+            } catch (\Exception $notifEx) {
+                Log::warning('⚠️ No se pudieron crear notificaciones de reactivación: ' . $notifEx->getMessage());
+            }
+
             return response()->json([
                 'message'      => 200,
                 'message_text' => 'Solicitud enviada. El propietario del grupo fue notificado por correo.'
@@ -1522,6 +1530,20 @@ class TareasController extends Controller
 
                         $miembrosNotificados++;
 
+                        // 🆕 Notificación en sistema al miembro
+                        try {
+                            NotificationService::tareaReactivada(
+                                $miembro,
+                                $dueno,
+                                $tarea,
+                                $grupo,
+                                $nuevaFechaFormateada,
+                                $accion
+                            );
+                        } catch (\Exception $notifEx) {
+                            Log::warning('⚠️ No se pudo crear notificación tareaReactivada: ' . $notifEx->getMessage());
+                        }
+
                         Log::info('✅ Correo 3 enviado a miembro: ' . $miembro->email, [
                             'tarea_id'   => $tarea->id,
                             'miembro_id' => $miembro->id,
@@ -1559,6 +1581,20 @@ class TareasController extends Controller
                         'miembros_notificados' => $miembrosNotificados,
                         'accion'               => $accion,
                     ]);
+
+                    // 🆕 Notificación en sistema al propietario
+                    try {
+                        NotificationService::reactivacionConfirmadaPropietario(
+                            $dueno,
+                            $tarea,
+                            $grupo,
+                            $nuevaFechaFormateada,
+                            $miembrosNotificados,
+                            $accion
+                        );
+                    } catch (\Exception $notifEx) {
+                        Log::warning('⚠️ No se pudo crear notificación reactivacionConfirmada: ' . $notifEx->getMessage());
+                    }
 
                 } catch (\Exception $e) {
                     Log::error('❌ Error correo 4 al propietario: ' . $e->getMessage());

@@ -180,6 +180,13 @@ class GruposController extends Controller
             // Cargar relaciones
             $grupo->load(['user', 'workspace']);
 
+            // 🆕 Notificación en sistema: grupo creado
+            try {
+                NotificationService::grupoCreado($grupo, $user);
+            } catch (\Exception $e) {
+                Log::warning('⚠️ No se pudo crear notificación grupoCreado: ' . $e->getMessage());
+            }
+
             // Agregar información de permisos
             $grupo->is_owner = true;
             $grupo->has_write_access = true;
@@ -524,36 +531,24 @@ class GruposController extends Controller
                     'total_nuevos' => count($newUserIds)
                 ]);
                 
-                // 📝 NOTA: Sistema de notificaciones deshabilitado temporalmente
-                // Para habilitar notificaciones, descomentar el código siguiente y
-                // asegurarse de que NotificationService::grupoCompartido() existe
-                
-                /*
-                // ✅ CREAR NOTIFICACIONES para cada usuario nuevo
+                // 🆕 Notificaciones en sistema: grupo compartido
                 try {
-                    $propietario = $user;
-                    
-                    foreach ($newUserIds as $userId) {
-                        $invitado = User::find($userId);
-                        
-                        if ($invitado && class_exists('App\Services\NotificationService')) {
-                            NotificationService::grupoCompartido(
-                                $grupo,
-                                $propietario,
-                                $invitado
-                            );
-                            
-                            Log::info('✅ Notificación de grupo compartido enviada', [
-                                'grupo_id' => $grupo->id,
-                                'propietario_id' => $propietario->id,
-                                'invitado_id' => $userId
-                            ]);
+                    $grupo->load('workspace');
+                    $usuariosData = collect($newUserIds)->map(fn($id) => ['id' => $id])->toArray();
+
+                    // Confirmación al propietario
+                    NotificationService::grupoCompartidoPropietario($grupo, $user, $usuariosData);
+
+                    // Notificación individual a cada invitado
+                    foreach ($newUserIds as $invitadoId) {
+                        $invitado = User::find($invitadoId);
+                        if ($invitado) {
+                            NotificationService::grupoCompartidoInvitado($grupo, $user, $invitado);
                         }
                     }
                 } catch (\Exception $e) {
-                    Log::warning('⚠️ No se pudieron crear algunas notificaciones: ' . $e->getMessage());
+                    Log::warning('⚠️ No se pudieron crear notificaciones de grupo compartido: ' . $e->getMessage());
                 }
-                */
             }
 
             // Recargar usuarios compartidos
@@ -797,31 +792,16 @@ class GruposController extends Controller
                 'updated_by' => auth()->id()
             ]);
             
-            // 📝 NOTA: Sistema de notificaciones deshabilitado temporalmente
-            /*
-            // ✅ CREAR NOTIFICACIÓN EN EL SISTEMA para el usuario afectado
+            // 🆕 Notificación en sistema: permisos cambiados
             try {
                 $propietario = auth()->user();
-                $afectado = User::find($userId);
-                
-                if ($afectado && class_exists('App\Services\NotificationService')) {
-                    NotificationService::permisosCambiados(
-                        $grupo,
-                        $propietario,
-                        $afectado,
-                        $request->permission_level
-                    );
-                    
-                    Log::info('✅ Notificación de cambio de permisos enviada', [
-                        'grupo_id' => $grupo->id,
-                        'user_id' => $userId,
-                        'new_permission' => $request->permission_level
-                    ]);
+                $afectado    = User::find($userId);
+                if ($afectado) {
+                    NotificationService::permisosCambiados($grupo, $propietario, $afectado, $request->permission_level);
                 }
             } catch (\Exception $e) {
-                Log::warning('⚠️ No se pudo crear notificación de cambio de permisos: ' . $e->getMessage());
+                Log::warning('⚠️ No se pudo crear notificación de permisos cambiados: ' . $e->getMessage());
             }
-            */
 
             return response()->json([
                 "message" => 200,
